@@ -133,8 +133,8 @@
     {
       "id": "p1h-4",
       "name": "HttpResponse::setHeader() interface",
-      "status": "todo",
-      "dependency": "Phase 0",
+      "status": "done",
+      "dependency": "Phase 0 ✅",
       "details": "Generic header support (shared with REFIH)"
     },
     {
