@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Webserv Phase Tracker</title>
+	<style>
+		* {
+			margin: 0;
+			padding: 0;
+			box-sizing: border-box;
+		}
+
+		body {
+			font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+			background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+			min-height: 100vh;
+			padding: 20px;
+		}
+
+		.container {
+			max-width: 1600px;
+			margin: 0 auto;
+		}
+
+		header {
+			text-align: center;
+			color: white;
+			margin-bottom: 30px;
+		}
+
+		header h1 {
+			font-size: 2.5em;
+			margin-bottom: 10px;
+		}
+
+		header p {
+			font-size: 1.1em;
+			opacity: 0.9;
+		}
+
+		.controls {
+			background: white;
+			padding: 20px;
+			border-radius: 10px;
+			margin-bottom: 20px;
+			text-align: center;
+			box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+		}
+
+		.controls button {
+			padding: 10px 20px;
+			margin: 5px;
+			border: none;
+			border-radius: 5px;
+			cursor: pointer;
+			font-weight: 600;
+			transition: all 0.3s;
+		}
+
+		.btn-save {
+			background: #28a745;
+			color: white;
+		}
+
+		.btn-save:hover {
+			background: #218838;
+		}
+
+		.btn-load {
+			background: #007bff;
+			color: white;
+		}
+
+		.btn-load:hover {
+			background: #0056b3;
+		}
+
+		.btn-reset {
+			background: #dc3545;
+			color: white;
+		}
+
+		.btn-reset:hover {
+			background: #c82333;
+		}
+
+		.stats {
+			display: grid;
+			grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+			gap: 20px;
+			margin-bottom: 30px;
+		}
+
+		.stat-card {
+			background: white;
+			padding: 20px;
+			border-radius: 10px;
+			box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+		}
+
+		.stat-card h3 {
+			color: #666;
+			font-size: 0.9em;
+			margin-bottom: 10px;
+			text-transform: uppercase;
+		}
+
+		.stat-card .person-name {
+			color: #667eea;
+			font-size: 0.85em;
+			margin-bottom: 10px;
+		}
+
+		.stat-card .number {
+			font-size: 2em;
+			font-weight: bold;
+			color: #667eea;
+		}
+
+		.progress-bar {
+			width: 100%;
+			height: 8px;
+			background: #eee;
+			border-radius: 10px;
+			overflow: hidden;
+			margin: 10px 0;
+		}
+
+		.progress-fill {
+			height: 100%;
+			background: #28a745;
+			width: 0%;
+			transition: width 0.3s ease;
+		}
+
+		.phase-section {
+			background: white;
+			border-radius: 10px;
+			margin-bottom: 20px;
+			box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+			overflow: hidden;
+		}
+
+		.phase-header {
+			background: #667eea;
+			color: white;
+			padding: 20px;
+			display: flex;
+			justify-content: space-between;
+			align-items: center;
+		}
+
+		.phase-header h2 {
+			font-size: 1.5em;
+		}
+
+		.phase-status {
+			font-size: 0.9em;
+			padding: 5px 15px;
+			border-radius: 20px;
+			background: rgba(255,255,255,0.2);
+		}
+
+		.phase-content {
+			padding: 20px;
+			overflow-x: auto;
+		}
+
+		table {
+			width: 100%;
+			border-collapse: collapse;
+		}
+
+		th {
+			background: #f5f5f5;
+			padding: 12px;
+			text-align: left;
+			font-weight: 600;
+			color: #333;
+			border-bottom: 2px solid #ddd;
+		}
+
+		td {
+			padding: 12px;
+			border-bottom: 1px solid #eee;
+		}
+
+		tr:hover {
+			background: #f9f9f9;
+		}
+
+		.checkbox {
+			cursor: pointer;
+			width: 20px;
+			height: 20px;
+			accent-color: #667eea;
+		}
+
+		.status {
+			display: inline-flex;
+			align-items: center;
+			gap: 5px;
+			padding: 5px 10px;
+			border-radius: 5px;
+			font-size: 0.9em;
+			font-weight: 600;
+		}
+
+		.status.done {
+			background: #d4edda;
+			color: #155724;
+		}
+
+		.status.todo {
+			background: #fff3cd;
+			color: #856404;
+		}
+
+		.person {
+			background: #f0f0f0;
+			padding: 5px 10px;
+			border-radius: 5px;
+			font-size: 0.85em;
+			font-weight: 600;
+			display: inline-block;
+			color: #555;
+		}
+
+		.dependency {
+			font-size: 0.85em;
+			color: #666;
+			font-style: italic;
+		}
+
+		.message {
+			padding: 10px 20px;
+			border-radius: 5px;
+			margin-bottom: 10px;
+		}
+
+		.message.success {
+			background: #d4edda;
+			color: #155724;
+			border: 1px solid #c3e6cb;
+		}
+
+		.message.error {
+			background: #f8d7da;
+			color: #721c24;
+			border: 1px solid #f5c6cb;
+		}
+
+		footer {
+			text-align: center;
+			color: white;
+			margin-top: 30px;
+			padding: 20px;
+		}
+
+		.last-update {
+			font-size: 0.9em;
+			color: rgba(255,255,255,0.7);
+		}
+
+		@media (max-width: 768px) {
+			.phase-header {
+				flex-direction: column;
+				gap: 10px;
+			}
+
+			table {
+				font-size: 0.9em;
+			}
+
+			td, th {
+				padding: 8px;
+			}
+		}
+	</style>
+</head>
+<body>
+	<div class="container">
+		<header>
+			<h1>🚀 Webserv Project Tracker</h1>
+			<p>Team Coordination Dashboard - Phase 0 & Beyond</p>
+		</header>
+
+		<!-- Controls -->
+		<div class="controls">
+			<button class="btn-load" onclick="loadFromFile()">📂 Load from File</button>
+			<button class="btn-save" onclick="saveToFile()">💾 Save to File</button>
+			<button class="btn-reset" onclick="resetAll()">🔄 Reset All</button>
+			<div id="message"></div>
+		</div>
+
+		<!-- Stats -->
+		<div class="stats">
+			<div class="stat-card">
+				<h3>Phase 0</h3>
+				<div class="person-name">Refih</div>
+				<div class="number" id="phase0-progress">0/10</div>
+				<div class="progress-bar">
+					<div class="progress-fill" id="phase0-bar" style="width: 0%;"></div>
+				</div>
+			</div>
+			<div class="stat-card">
+				<h3>Phase 1 - Core</h3>
+				<div class="person-name">Refih</div>
+				<div class="number" id="phase1-core-progress">0/5</div>
+				<div class="progress-bar">
+					<div class="progress-fill" id="phase1-core-bar" style="width: 0%;"></div>
+				</div>
+			</div>
+			<div class="stat-card">
+				<h3>Phase 1 - HTTP</h3>
+				<div class="person-name">Esteban</div>
+				<div class="number" id="phase1-http-progress">0/6</div>
+				<div class="progress-bar">
+					<div class="progress-fill" id="phase1-http-bar" style="width: 0%;"></div>
+				</div>
+			</div>
+			<div class="stat-card">
+				<h3>Phase 1 - CONFIG/CGI</h3>
+				<div class="person-name">Antoine</div>
+				<div class="number" id="phase1-config-progress">0/4</div>
+				<div class="progress-bar">
+					<div class="progress-fill" id="phase1-config-bar" style="width: 0%;"></div>
+				</div>
+			</div>
+		</div>
+
+		<!-- Phase 0 -->
+		<div class="phase-section">
+			<div class="phase-header">
+				<div>
+					<h2>Phase 0: ServerConfig Interface (BLOCKING)</h2>
+					<small style="opacity: 0.8;">Must be complete before team starts parallel work</small>
+				</div>
+				<div class="phase-status">⏳ IN PROGRESS</div>
+			</div>
+			<div class="phase-content">
+				<table>
+					<thead>
+						<tr>
+							<th style="width: 30px;"></th>
+							<th>Task</th>
+							<th style="width: 100px;">Person</th>
+							<th>Details</th>
+						</tr>
+					</thead>
+					<tbody id="phase0-tasks">
+					</tbody>
+				</table>
+			</div>
+		</div>
+
+		<!-- Phase 1 - REFIH -->
+		<div class="phase-section">
+			<div class="phase-header">
+				<div>
+					<h2>Phase 1: Core / Network - Refih</h2>
+					<small style="opacity: 0.8;">Multi-socket, timeout, signals (independent)</small>
+				</div>
+				<div class="phase-status">⏳ WAITING</div>
+			</div>
+			<div class="phase-content">
+				<table>
+					<thead>
+						<tr>
+							<th style="width: 30px;"></th>
+							<th>Task</th>
+							<th style="width: 150px;">Dependency</th>
+							<th>Details</th>
+						</tr>
+					</thead>
+					<tbody id="phase1-core-tasks">
+					</tbody>
+				</table>
+			</div>
+		</div>
+
+		<!-- Phase 1 - Person 2 -->
+		<div class="phase-section">
+			<div class="phase-header">
+				<div>
+					<h2>Phase 1: HTTP Protocol - Esteban</h2>
+					<small style="opacity: 0.8;">Chunked, URL decode, status codes (independent)</small>
+				</div>
+				<div class="phase-status">⏳ WAITING</div>
+			</div>
+			<div class="phase-content">
+				<table>
+					<thead>
+						<tr>
+							<th style="width: 30px;"></th>
+							<th>Task</th>
+							<th style="width: 150px;">Dependency</th>
+							<th>Details</th>
+						</tr>
+					</thead>
+					<tbody id="phase1-http-tasks">
+					</tbody>
+				</table>
+			</div>
+		</div>
+
+		<!-- Phase 1 - Person 3 -->
+		<div class="phase-section">
+			<div class="phase-header">
+				<div>
+					<h2>Phase 1: Config / CGI - Antoine</h2>
+					<small style="opacity: 0.8;">CGI, redirect, multipart (independent)</small>
+				</div>
+				<div class="phase-status">⏳ WAITING</div>
+			</div>
+			<div class="phase-content">
+				<table>
+					<thead>
+						<tr>
+							<th style="width: 30px;"></th>
+							<th>Task</th>
+							<th style="width: 150px;">Dependency</th>
+							<th>Details</th>
+						</tr>
+					</thead>
+					<tbody id="phase1-config-tasks">
+					</tbody>
+				</table>
+			</div>
+		</div>
+
+		<footer>
+			<p><strong>Last Updated:</strong> <span id="last-update"></span></p>
+			<p class="last-update">✓ Click checkboxes to mark tasks complete</p>
+			<p class="last-update">✓ Click "Save to File" to save progress to progress.json</p>
+			<p class="last-update">✓ Commit progress.json to git for team sync</p>
+		</footer>
+	</div>
+
+	<script>
+		// Tasks data structure
+		const initialTasks = {
+			phase0: [
+				{ id: 'p0-1', name: 'ServerConfig class implementation', person: 'REFIH', status: 'todo', details: 'Move current Config contents (host, port, root, index, etc.)' },
+				{ id: 'p0-2', name: 'Config container (vector<ServerConfig>)', person: 'REFIH', status: 'todo', details: 'Turn Config into top-level container' },
+				{ id: 'p0-3', name: 'Parser - multiple server blocks', person: 'REFIH', status: 'todo', details: 'Extend parser to split multiple server {} blocks' },
+				{ id: 'p0-4', name: 'HttpRequest implementation', person: 'REFIH', status: 'todo', details: 'Parse HTTP requests (method, target, version, headers, body)' },
+				{ id: 'p0-5', name: 'HttpResponse implementation', person: 'REFIH', status: 'todo', details: 'Generate HTTP responses with status, headers, body' },
+				{ id: 'p0-6', name: 'HttpResponse::setHeader() method', person: 'REFIH', status: 'todo', details: 'Support for custom headers (Keep-Alive, etc.)' },
+				{ id: 'p0-7', name: 'Server::handleClientWrite() fix', person: 'REFIH', status: 'todo', details: 'Proper partial send handling' },
+				{ id: 'p0-8', name: 'Comprehensive test suite', person: 'REFIH', status: 'todo', details: '6 unit tests + integration tests' },
+				{ id: 'p0-9', name: 'Interface frozen & documented', person: 'REFIH', status: 'todo', details: 'Ready for team to build on top' },
+				{ id: 'p0-10', name: 'RequestHandler extraction', person: 'REFIH', status: 'todo', details: 'Extract handler logic from Server.cpp (reduce conflicts)' }
+			],
+			phase1_core: [
+				{ id: 'p1c-1', name: 'Multi-socket listening', status: 'todo', dependency: 'Phase 0', details: 'Each ServerConfig gets its own fd, all in one poll()' },
+				{ id: 'p1c-2', name: 'Timeout / hang protection', status: 'todo', dependency: 'Phase 0', details: 'poll timeout + last-activity tracking per client' },
+				{ id: 'p1c-3', name: 'Signal handling (SIGINT)', status: 'todo', dependency: 'Phase 0', details: 'Clean shutdown on signals' },
+				{ id: 'p1c-4', name: 'Keep-Alive support', status: 'todo', dependency: 'Person 2: setHeader()', details: 'Respect Connection header, keep sockets open' },
+				{ id: 'p1c-5', name: 'Stress-test infrastructure', status: 'todo', dependency: 'Phases 1-2 complete', details: 'Apache Bench compatibility, load testing' }
+			],
+			phase1_http: [
+				{ id: 'p1h-1', name: 'Chunked transfer-encoding', status: 'todo', dependency: 'None', details: 'Request unchunking + chunked response writing' },
+				{ id: 'p1h-2', name: 'URL decoding & .. hardening', status: 'todo', dependency: 'None', details: '%2e, %20 handling, path traversal protection' },
+				{ id: 'p1h-3', name: 'Missing status codes', status: 'todo', dependency: 'None', details: '411, 505, 301/302, etc.' },
+				{ id: 'p1h-4', name: 'HttpResponse::setHeader() interface', status: 'todo', dependency: 'Phase 0', details: 'Generic header support (shared with REFIH)' },
+				{ id: 'p1h-5', name: 'Redirect header (Location:)', status: 'todo', dependency: 'Person 3: redirect field', details: 'Generate Location: headers for redirects' },
+				{ id: 'p1h-6', name: 'Stream-based body parsing', status: 'todo', dependency: 'None', details: 'Replace \\0-sensitive parsing' }
+			],
+			phase1_config: [
+				{ id: 'p1x-1', name: 'CGI engine (fork/execve/pipe)', status: 'todo', dependency: 'Phase 0', details: 'Fork/execve, pipe setup, env variables' },
+				{ id: 'p1x-2', name: 'Add redirect field to Location', status: 'todo', dependency: 'Phase 0', details: 'Support redirect directives' },
+				{ id: 'p1x-3', name: 'Add cgi_extension mapping', status: 'todo', dependency: 'Phase 0', details: 'Map file extensions to CGI handlers' },
+				{ id: 'p1x-4', name: 'Multipart/form-data upload', status: 'todo', dependency: 'None', details: 'Improve upload support beyond basic POST' }
+			]
+		};
+
+		let tasks = JSON.parse(JSON.stringify(initialTasks));
+
+		// Load from progress.json file
+		function loadFromFile() {
+			const fileInput = document.createElement('input');
+			fileInput.type = 'file';
+			fileInput.accept = '.json';
+			fileInput.onchange = (e) => {
+				const file = e.target.files[0];
+				const reader = new FileReader();
+				reader.onload = (event) => {
+					try {
+						const data = JSON.parse(event.target.result);
+						tasks = data;
+						renderTasks();
+						updateStats();
+						showMessage('✅ Loaded from file successfully!', 'success');
+					} catch (err) {
+						showMessage('❌ Error loading file: ' + err.message, 'error');
+					}
+				};
+				reader.readAsText(file);
+			};
+			fileInput.click();
+		}
+
+		// Save to progress.json file
+		function saveToFile() {
+			const dataStr = JSON.stringify(tasks, null, 2);
+			const dataBlob = new Blob([dataStr], { type: 'application/json' });
+			const url = URL.createObjectURL(dataBlob);
+			const link = document.createElement('a');
+			link.href = url;
+			link.download = 'progress.json';
+			link.click();
+			showMessage('✅ Saved to progress.json! Now commit to git.', 'success');
+		}
+
+		// Reset all tasks
+		function resetAll() {
+			if (confirm('Reset all tasks to TODO? This cannot be undone.')) {
+				tasks = JSON.parse(JSON.stringify(initialTasks));
+				renderTasks();
+				updateStats();
+				showMessage('🔄 All tasks reset to TODO', 'success');
+			}
+		}
+
+		// Show message
+		function showMessage(msg, type) {
+			const messageEl = document.getElementById('message');
+			messageEl.textContent = msg;
+			messageEl.className = 'message ' + type;
+			setTimeout(() => {
+				messageEl.textContent = '';
+				messageEl.className = '';
+			}, 3000);
+		}
+
+		// Render tasks
+		function renderTasks() {
+			// Phase 0
+			const phase0Html = tasks.phase0.map(task => `
+				<tr>
+					<td><input type="checkbox" class="checkbox" ${task.status === 'done' ? 'checked' : ''} onchange="toggleTask('phase0', '${task.id}')"></td>
+					<td><strong>${task.name}</strong></td>
+					<td><span class="person">${task.person}</span></td>
+					<td>${task.details}</td>
+				</tr>
+			`).join('');
+			document.getElementById('phase0-tasks').innerHTML = phase0Html;
+
+			// Phase 1 - Core
+			const phase1CoreHtml = tasks.phase1_core.map(task => `
+				<tr>
+					<td><input type="checkbox" class="checkbox" ${task.status === 'done' ? 'checked' : ''} onchange="toggleTask('phase1_core', '${task.id}')"></td>
+					<td><strong>${task.name}</strong></td>
+					<td><span class="dependency">${task.dependency}</span></td>
+					<td>${task.details}</td>
+				</tr>
+			`).join('');
+			document.getElementById('phase1-core-tasks').innerHTML = phase1CoreHtml;
+
+			// Phase 1 - HTTP
+			const phase1HttpHtml = tasks.phase1_http.map(task => `
+				<tr>
+					<td><input type="checkbox" class="checkbox" ${task.status === 'done' ? 'checked' : ''} onchange="toggleTask('phase1_http', '${task.id}')"></td>
+					<td><strong>${task.name}</strong></td>
+					<td><span class="dependency">${task.dependency}</span></td>
+					<td>${task.details}</td>
+				</tr>
+			`).join('');
+			document.getElementById('phase1-http-tasks').innerHTML = phase1HttpHtml;
+
+			// Phase 1 - Config
+			const phase1ConfigHtml = tasks.phase1_config.map(task => `
+				<tr>
+					<td><input type="checkbox" class="checkbox" ${task.status === 'done' ? 'checked' : ''} onchange="toggleTask('phase1_config', '${task.id}')"></td>
+					<td><strong>${task.name}</strong></td>
+					<td><span class="dependency">${task.dependency}</span></td>
+					<td>${task.details}</td>
+				</tr>
+			`).join('');
+			document.getElementById('phase1-config-tasks').innerHTML = phase1ConfigHtml;
+		}
+
+		// Toggle task status
+		function toggleTask(phase, taskId) {
+			const phaseData = tasks[phase];
+			const task = phaseData.find(t => t.id === taskId);
+			if (task) {
+				task.status = task.status === 'done' ? 'todo' : 'done';
+				renderTasks();
+				updateStats();
+			}
+		}
+
+		// Update stats
+		function updateStats() {
+			const calcProgress = (phase) => {
+				const done = tasks[phase].filter(t => t.status === 'done').length;
+				const total = tasks[phase].length;
+				return { done, total };
+			};
+
+			// Phase 0
+			const p0 = calcProgress('phase0');
+			document.getElementById('phase0-progress').textContent = `${p0.done}/${p0.total}`;
+			document.getElementById('phase0-bar').style.width = (p0.done / p0.total * 100) + '%';
+
+			// Phase 1 - Core
+			const p1c = calcProgress('phase1_core');
+			document.getElementById('phase1-core-progress').textContent = `${p1c.done}/${p1c.total}`;
+			document.getElementById('phase1-core-bar').style.width = (p1c.done / p1c.total * 100) + '%';
+
+			// Phase 1 - HTTP
+			const p1h = calcProgress('phase1_http');
+			document.getElementById('phase1-http-progress').textContent = `${p1h.done}/${p1h.total}`;
+			document.getElementById('phase1-http-bar').style.width = (p1h.done / p1h.total * 100) + '%';
+
+			// Phase 1 - Config
+			const p1x = calcProgress('phase1_config');
+			document.getElementById('phase1-config-progress').textContent = `${p1x.done}/${p1x.total}`;
+			document.getElementById('phase1-config-bar').style.width = (p1x.done / p1x.total * 100) + '%';
+
+			// Update last update time
+			const now = new Date();
+			document.getElementById('last-update').textContent = now.toLocaleString('tr-TR');
+		}
+
+		// Initialize
+		renderTasks();
+		updateStats();
+	</script>
+</body>
+</html>

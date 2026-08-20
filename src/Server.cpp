@@ -17,15 +17,18 @@
 #include <netinet/in.h>
 
 Server::Server(const Config &config)
-	: _listenFd(-1),
-	  _config(config)
+	: _config(config)
 {
 }
 
 Server::~Server()
 {
-	if (_listenFd != -1)
-		close(_listenFd);
+	std::vector<int>::iterator it;
+	for (it = _listenFds.begin(); it != _listenFds.end(); ++it)
+	{
+		if (*it != -1)
+			close(*it);
+	}
 }
 
 void Server::setNonBlocking(int fd)
@@ -49,32 +52,47 @@ void Server::setNonBlocking(int fd)
 	}
 }
 
-void Server::createSocket()
+void Server::createSockets()
 {
-	_listenFd = socket(AF_INET, SOCK_STREAM, 0);
+	const std::vector<ServerConfig> &servers = _config.getServers();
 
-	if (_listenFd == -1)
+	if (servers.empty())
 	{
-		std::cerr << "Error: socket() failed: "
-				  << strerror(errno) << std::endl;
+		std::cerr << "Error: no servers configured" << std::endl;
 		std::exit(1);
 	}
 
-	int opt = 1;
+	std::vector<ServerConfig>::const_iterator it;
+	std::size_t idx = 0;
 
-	if (setsockopt(_listenFd, SOL_SOCKET, SO_REUSEADDR,
-				   &opt, sizeof(opt)) == -1)
+	for (it = servers.begin(); it != servers.end(); ++it, ++idx)
 	{
-		std::cerr << "Error: setsockopt() failed: "
-				  << strerror(errno) << std::endl;
-		close(_listenFd);
-		std::exit(1);
-	}
+		int fd = socket(AF_INET, SOCK_STREAM, 0);
 
-	setNonBlocking(_listenFd);
+		if (fd == -1)
+		{
+			std::cerr << "Error: socket() failed: "
+					  << strerror(errno) << std::endl;
+			std::exit(1);
+		}
+
+		int opt = 1;
+
+		if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR,
+					   &opt, sizeof(opt)) == -1)
+		{
+			std::cerr << "Error: setsockopt() failed: "
+					  << strerror(errno) << std::endl;
+			close(fd);
+			std::exit(1);
+		}
+
+		setNonBlocking(fd);
+		_listenFds.push_back(fd);
+	}
 }
 
-void Server::bindSocket()
+void Server::bindAndListenSocket(int fd, const ServerConfig &serverConfig)
 {
 	struct addrinfo hints;
 	struct addrinfo *result = NULL;
@@ -86,12 +104,12 @@ void Server::bindSocket()
 	hints.ai_flags = AI_PASSIVE;
 
 	std::ostringstream portStream;
-	portStream << _config.getPort();
+	portStream << serverConfig.getPort();
 
 	std::string port = portStream.str();
 
 	int status = getaddrinfo(
-		_config.getHost().c_str(),
+		serverConfig.getHost().c_str(),
 		port.c_str(),
 		&hints,
 		&result
@@ -101,47 +119,53 @@ void Server::bindSocket()
 	{
 		std::cerr << "Error: getaddrinfo() failed: "
 				  << gai_strerror(status) << std::endl;
-		close(_listenFd);
+		close(fd);
 		std::exit(1);
 	}
 
-	if (bind(_listenFd, result->ai_addr, result->ai_addrlen) == -1)
+	if (bind(fd, result->ai_addr, result->ai_addrlen) == -1)
 	{
-		std::cerr << "Error: bind() failed: "
+		std::cerr << "Error: bind() failed on "
+				  << serverConfig.getHost() << ":"
+				  << serverConfig.getPort() << ": "
 				  << strerror(errno) << std::endl;
 		freeaddrinfo(result);
-		close(_listenFd);
+		close(fd);
 		std::exit(1);
 	}
 
 	freeaddrinfo(result);
-}
 
-void Server::startListening()
-{
-	if (listen(_listenFd, SOMAXCONN) == -1)
+	if (listen(fd, SOMAXCONN) == -1)
 	{
 		std::cerr << "Error: listen() failed: "
 				  << strerror(errno) << std::endl;
-		close(_listenFd);
+		close(fd);
 		std::exit(1);
 	}
 }
 
 void Server::run()
 {
-	createSocket();
-	bindSocket();
-	startListening();
+	createSockets();
 
-	addPollFd(_listenFd, POLLIN);
+	const std::vector<ServerConfig> &servers = _config.getServers();
+	std::vector<int>::iterator it;
+	std::size_t idx = 0;
+
+	for (it = _listenFds.begin(); it != _listenFds.end(); ++it, ++idx)
+	{
+		bindAndListenSocket(*it, servers[idx]);
+		addPollFd(*it, POLLIN);
+
+		std::cout << "Listening on "
+				  << servers[idx].getHost()
+				  << ":"
+				  << servers[idx].getPort()
+				  << std::endl;
+	}
 
 	std::cout << "Server started" << std::endl;
-	std::cout << "Listening on "
-			  << _config.getHost()
-			  << ":"
-			  << _config.getPort()
-			  << std::endl;
 
 	while (true)
 	{
@@ -162,10 +186,26 @@ void Server::run()
 
 		while (i < _pollFds.size())
 		{
-			if (_pollFds[i].fd == _listenFd)
+			bool isListenSocket = false;
+			const ServerConfig *serverConfig = NULL;
+
+			std::vector<int>::const_iterator listenIt;
+
+			for (listenIt = _listenFds.begin(); listenIt != _listenFds.end(); ++listenIt)
+			{
+				if (_pollFds[i].fd == *listenIt)
+				{
+					isListenSocket = true;
+					std::size_t serverIdx = listenIt - _listenFds.begin();
+					serverConfig = &servers[serverIdx];
+					break;
+				}
+			}
+
+			if (isListenSocket)
 			{
 				if (_pollFds[i].revents & POLLIN)
-					acceptClient();
+					acceptClient(_pollFds[i].fd, *serverConfig);
 
 				++i;
 				continue;
@@ -210,13 +250,13 @@ void Server::addPollFd(int fd, short events)
 	_pollFds.push_back(pfd);
 }
 
-void Server::acceptClient()
+void Server::acceptClient(int listenFd, const ServerConfig &serverConfig)
 {
 	struct sockaddr_storage clientAddress;
 	socklen_t clientAddressSize = sizeof(clientAddress);
 
 	int clientFd = accept(
-		_listenFd,
+		listenFd,
 		reinterpret_cast<struct sockaddr *>(&clientAddress),
 		&clientAddressSize
 	);
@@ -228,8 +268,11 @@ void Server::acceptClient()
 
 	addPollFd(clientFd, POLLIN);
 	_clientBuffers[clientFd] = "";
+	_clientServers[clientFd] = &serverConfig;
 	std::cout << "New client connected: fd="
-			  << clientFd << std::endl;
+			  << clientFd << " on "
+			  << serverConfig.getHost() << ":"
+			  << serverConfig.getPort() << std::endl;
 }
 
 void Server::handleClientRead(std::size_t index)
@@ -285,17 +328,20 @@ void Server::handleClientRead(std::size_t index)
 
 	std::string contentLength = request.getHeader("Content-Length");
 
+	const ServerConfig *serverConfig = _clientServers[clientFd];
+
 	if (!contentLength.empty())
 	{
 		std::size_t expectedBodyLength =
 			std::atoi(contentLength.c_str());
 
-		if (expectedBodyLength > _config.getClientMaxBodySize())
+		if (expectedBodyLength > serverConfig->getClientMaxBodySize())
 		{
 			HttpResponse response;
 
 			setErrorResponse(
-					response,
+			*serverConfig,
+			response,
 					413,
 					"Payload Too Large",
 					"Payload Too Large\n"
@@ -318,14 +364,15 @@ void Server::handleClientRead(std::size_t index)
 	std::cout << "Target:  " << request.getTarget() << std::endl;
 	std::cout << "Version: " << request.getVersion() << std::endl;
 
-	const Location *location = _config.findLocation(request.getTarget());
+	const Location *location = serverConfig->findLocation(request.getTarget());
 	HttpResponse response;
 
 	if (location != NULL &&
 		!location->isMethodAllowed(request.getMethod()))
 	{
 		setErrorResponse(
-				response,
+			*serverConfig,
+			response,
 				405,
 				"Method Not Allowed",
 				"Method Not Allowed\n"
@@ -414,7 +461,8 @@ void Server::handleClientRead(std::size_t index)
 		if (request.getTarget().find("..") != std::string::npos)
 		{
 			setErrorResponse(
-					response,
+			*serverConfig,
+			response,
 					403,
 					"Forbidden",
 					"Forbidden\n"
@@ -422,7 +470,7 @@ void Server::handleClientRead(std::size_t index)
 		}
 		else
 		{
-			std::string root = _config.getRoot();
+			std::string root = serverConfig->getRoot();
 			std::string path;
 
 			if (location != NULL && !location->getRoot().empty())
@@ -446,7 +494,8 @@ void Server::handleClientRead(std::size_t index)
 			if (!fileExists(path) && !isDirectory(path))
 			{
 				setErrorResponse(
-						response,
+			*serverConfig,
+			response,
 						404,
 						"Not Found",
 						"Not Found\n"
@@ -455,7 +504,8 @@ void Server::handleClientRead(std::size_t index)
 			else if (isDirectory(path))
 			{
 				setErrorResponse(
-						response,
+			*serverConfig,
+			response,
 						403,
 						"Forbidden",
 						"Forbidden\n"
@@ -483,7 +533,8 @@ void Server::handleClientRead(std::size_t index)
 		if (request.getTarget().find("..") != std::string::npos)
 		{
 			setErrorResponse(
-					response,
+			*serverConfig,
+			response,
 					403,
 					"Forbidden",
 					"Forbidden\n"
@@ -491,7 +542,7 @@ void Server::handleClientRead(std::size_t index)
 		}
 		else
 		{
-			std::string root = _config.getRoot();
+			std::string root = serverConfig->getRoot();
 			std::string path;
 
 			if (location != NULL && !location->getRoot().empty())
@@ -515,7 +566,8 @@ void Server::handleClientRead(std::size_t index)
 			if (!fileExists(path) && !isDirectory(path))
 			{
 				setErrorResponse(
-						response,
+			*serverConfig,
+			response,
 						404,
 						"Not Found",
 						"Not Found\n"
@@ -528,7 +580,7 @@ void Server::handleClientRead(std::size_t index)
 				if (directoryPath[directoryPath.size() - 1] != '/')
 					directoryPath += "/";
 
-				std::string index = _config.getIndex();
+				std::string index = serverConfig->getIndex();
 
 				if (location != NULL && !location->getIndex().empty())
 					index = location->getIndex();
@@ -546,7 +598,7 @@ void Server::handleClientRead(std::size_t index)
 				}
 				else
 				{
-					bool autoindex = _config.getAutoIndex();
+					bool autoindex = serverConfig->getAutoIndex();
 
 					if (location != NULL && location->isAutoIndexSet())
 						autoindex = location->getAutoIndex();
@@ -566,7 +618,8 @@ void Server::handleClientRead(std::size_t index)
 					else
 					{
 						setErrorResponse(
-								response,
+			*serverConfig,
+			response,
 								403,
 								"Forbidden",
 								"Forbidden\n"
@@ -587,7 +640,8 @@ void Server::handleClientRead(std::size_t index)
 	else
 	{
 		setErrorResponse(
-				response,
+			*serverConfig,
+			response,
 				405,
 				"Method Not Allowed",
 				"Method Not Allowed\n"
@@ -603,7 +657,6 @@ void Server::handleClientRead(std::size_t index)
 void Server::handleClientWrite(std::size_t index)
 {
 	int clientFd = _pollFds[index].fd;
-
 	std::string &response = _clientWriteBuffers[clientFd];
 
 	if (response.empty())
@@ -619,16 +672,23 @@ void Server::handleClientWrite(std::size_t index)
 		0
 	);
 
-	if (bytesSent <= 0)
+	if (bytesSent < 0)
 	{
 		removeClient(index);
+		return;
+	}
+
+	if (bytesSent == 0)
+	{
 		return;
 	}
 
 	response.erase(0, bytesSent);
 
 	if (response.empty())
-		removeClient(index);
+	{
+		_pollFds[index].events = POLLIN;
+	}
 }
 
 void Server::removeClient(std::size_t index)
@@ -775,6 +835,7 @@ std::string Server::generateDirectoryListing(
 }
 
 void Server::setErrorResponse(
+        const ServerConfig &serverConfig,
         HttpResponse &response,
         int statusCode,
         const std::string &statusText,
@@ -782,11 +843,11 @@ void Server::setErrorResponse(
 )
 {
     const std::string *errorPage =
-        _config.getErrorPage(statusCode);
+        serverConfig.getErrorPage(statusCode);
 
     if (errorPage != NULL)
     {
-        std::string path = _config.getRoot() + *errorPage;
+        std::string path = serverConfig.getRoot() + *errorPage;
 
         if (fileExists(path))
         {

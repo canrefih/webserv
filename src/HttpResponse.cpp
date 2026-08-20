@@ -46,10 +46,20 @@ std::string HttpResponse::toString() const
 	response << "Content-Type: "
 			 << _contentType
 			 << "\r\n";
+	for (std::map<std::string, std::string>::const_iterator it = _customHeaders.begin();
+		it != _customHeaders.end(); ++it)
+	{
+		response << it->first << ": " << it->second << "\r\n";
+	}
 
 	response << "Connection: close\r\n";
 	response << "\r\n";
 	response << _body;
 
 	return response.str();
+}
+
+void HttpResponse::setHeader(const std::string &name, const std::string &value)
+{
+    _customHeaders[name] = value;
 }

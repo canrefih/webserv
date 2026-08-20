@@ -6,12 +6,6 @@
 #include <cstdlib>
 
 Config::Config()
-    : _host("127.0.0.1"),
-      _port(8080),
-      _root("./www"),
-      _index("index.html"),
-      _autoindex(false),
-      _clientMaxBodySize(2097152)
 {
 }
 
@@ -31,8 +25,8 @@ bool Config::parse(const std::string &filename)
     }
 
     std::string line;
+    ServerConfig *currentServer = NULL;
     Location *currentLocation = NULL;
-    bool inServer = false;
 
     while (std::getline(file, line))
     {
@@ -42,20 +36,37 @@ bool Config::parse(const std::string &filename)
 
         iss >> directive;
 
-        if (directive.empty())
+        if (directive.empty() || directive[0] == '#')
             continue;
 
         if (directive == "server")
         {
-            inServer = true;
+            iss >> value;
+            if (value != "{")
+            {
+                std::cerr << "Error: expected '{' after 'server'"
+                          << std::endl;
+                return false;
+            }
+
+            _servers.push_back(ServerConfig());
+            currentServer = &_servers.back();
+            currentLocation = NULL;
             continue;
+        }
+
+        if (currentServer == NULL)
+        {
+            std::cerr << "Error: directive '" << directive
+                      << "' outside server block" << std::endl;
+            return false;
         }
 
         if (directive == "location")
         {
-            if (!inServer || currentLocation != NULL)
+            if (currentLocation != NULL)
             {
-                std::cerr << "Error: invalid location block"
+                std::cerr << "Error: nested location blocks not allowed"
                           << std::endl;
                 return false;
             }
@@ -64,13 +75,16 @@ bool Config::parse(const std::string &filename)
 
             if (value.empty())
             {
-                std::cerr << "Error: location path missing"
-                          << std::endl;
+                std::cerr << "Error: location path missing" << std::endl;
                 return false;
             }
 
-            _locations.push_back(Location(value));
-            currentLocation = &_locations.back();
+            if (value[value.size() - 1] == '{')
+                value.erase(value.size() - 1);
+
+            Location loc(value);
+            currentServer->addLocation(loc);
+            currentLocation = &currentServer->getLocations().back();
 
             continue;
         }
@@ -83,9 +97,9 @@ bool Config::parse(const std::string &filename)
                 continue;
             }
 
-            if (inServer)
+            if (currentServer != NULL)
             {
-                inServer = false;
+                currentServer = NULL;
                 continue;
             }
 
@@ -111,13 +125,16 @@ bool Config::parse(const std::string &filename)
 
             if (colon == std::string::npos)
             {
-                std::cerr << "Error: invalid listen directive"
+                std::cerr << "Error: invalid listen directive: " << value
                           << std::endl;
                 return false;
             }
 
-            _host = value.substr(0, colon);
-            _port = std::atoi(value.substr(colon + 1).c_str());
+            std::string host = value.substr(0, colon);
+            int port = std::atoi(value.substr(colon + 1).c_str());
+
+            currentServer->setHost(host);
+            currentServer->setPort(port);
         }
         else if (directive == "root")
         {
@@ -129,7 +146,7 @@ bool Config::parse(const std::string &filename)
             if (currentLocation != NULL)
                 currentLocation->setRoot(value);
             else
-                _root = value;
+                currentServer->setRoot(value);
         }
         else if (directive == "index")
         {
@@ -141,7 +158,7 @@ bool Config::parse(const std::string &filename)
             if (currentLocation != NULL)
                 currentLocation->setIndex(value);
             else
-                _index = value;
+                currentServer->setIndex(value);
         }
         else if (directive == "autoindex")
         {
@@ -155,14 +172,14 @@ bool Config::parse(const std::string &filename)
                 if (currentLocation != NULL)
                     currentLocation->setAutoIndex(true);
                 else
-                    _autoindex = true;
+                    currentServer->setAutoIndex(true);
             }
             else if (value == "off")
             {
                 if (currentLocation != NULL)
                     currentLocation->setAutoIndex(false);
                 else
-                    _autoindex = false;
+                    currentServer->setAutoIndex(false);
             }
             else
             {
@@ -204,8 +221,8 @@ bool Config::parse(const std::string &filename)
                 }
             }
 
-            _clientMaxBodySize =
-                std::atoi(value.c_str()) * multiplier;
+            currentServer->setClientMaxBodySize(
+                std::atoi(value.c_str()) * multiplier);
         }
         else if (directive == "error_page")
         {
@@ -247,7 +264,7 @@ bool Config::parse(const std::string &filename)
                 return false;
             }
 
-            _errorPages[statusCode] = path;
+            currentServer->setErrorPage(statusCode, path);
         }
         else if (directive == "allow_methods")
         {
@@ -319,9 +336,16 @@ bool Config::parse(const std::string &filename)
         }
     }
 
-    if (currentLocation != NULL || inServer)
+    if (currentLocation != NULL || currentServer != NULL)
     {
         std::cerr << "Error: unclosed configuration block"
+                  << std::endl;
+        return false;
+    }
+
+    if (_servers.empty())
+    {
+        std::cerr << "Error: no server blocks found"
                   << std::endl;
         return false;
     }
@@ -329,93 +353,20 @@ bool Config::parse(const std::string &filename)
     return true;
 }
 
-const std::string &Config::getHost() const // getter for the host
+const std::vector<ServerConfig> &Config::getServers() const
 {
-	return _host;
+    return _servers;
 }
 
-int Config::getPort() const // getter for the port
+const ServerConfig *Config::getServerByPort(int port) const
 {
-	return _port;
-}
+    std::vector<ServerConfig>::const_iterator it;
 
-const std::string &Config::getRoot() const // getter for the root directory
-{
-	return _root;
-}
-
-const std::string &Config::getIndex() const // getter for the index file
-{
-	return _index;
-}
-
-bool Config::getAutoIndex() const
-{
-	return _autoindex;
-}
-
-const std::string &Config::getUploadPath() const
-{
-	return _uploadPath;
-}
-
-std::size_t Config::getClientMaxBodySize() const
-{
-	return _clientMaxBodySize;
-}
-
-const std::vector<Location> &Config::getLocations() const
-{
-    return _locations;
-}
-
-const Location *Config::findLocation(const std::string &path) const
-{
-    const Location *bestMatch = NULL;
-    std::size_t bestLength = 0;
-
-    std::vector<Location>::const_iterator it;
-
-    for (it = _locations.begin(); it != _locations.end(); ++it)
+    for (it = _servers.begin(); it != _servers.end(); ++it)
     {
-        const std::string &locationPath = it->getPath();
-
-        if (path.compare(0, locationPath.size(), locationPath) != 0)
-            continue;
-
-        if (path.size() == locationPath.size())
-        {
-            if (locationPath.size() > bestLength)
-            {
-                bestMatch = &(*it);
-                bestLength = locationPath.size();
-            }
-        }
-        else if (locationPath == "/" || path[locationPath.size()] == '/')
-        {
-            if (locationPath.size() > bestLength)
-            {
-                bestMatch = &(*it);
-                bestLength = locationPath.size();
-            }
-        }
+        if (it->getPort() == port)
+            return &(*it);
     }
 
-    return bestMatch;
-}
-
-void Config::setErrorPage(int statusCode, const std::string &path)
-{
-    _errorPages[statusCode] = path;
-}
-
-const std::string *Config::getErrorPage(int statusCode) const
-{
-    std::map<int, std::string>::const_iterator it =
-        _errorPages.find(statusCode);
-
-    if (it == _errorPages.end())
-        return NULL;
-
-    return &it->second;
+    return NULL;
 }

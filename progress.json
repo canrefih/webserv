@@ -1,0 +1,185 @@
+{
+  "phase0": [
+    {
+      "id": "p0-1",
+      "name": "ServerConfig class implementation",
+      "person": "REFIH",
+      "status": "done",
+      "details": "Move current Config contents (host, port, root, index, etc.)"
+    },
+    {
+      "id": "p0-2",
+      "name": "Config container (vector<ServerConfig>)",
+      "person": "REFIH",
+      "status": "done",
+      "details": "Turn Config into top-level container"
+    },
+    {
+      "id": "p0-3",
+      "name": "Parser - multiple server blocks",
+      "person": "REFIH",
+      "status": "done",
+      "details": "Extend parser to split multiple server {} blocks"
+    },
+    {
+      "id": "p0-4",
+      "name": "HttpRequest implementation",
+      "person": "REFIH",
+      "status": "done",
+      "details": "Parse HTTP requests (method, target, version, headers, body)"
+    },
+    {
+      "id": "p0-5",
+      "name": "HttpResponse implementation",
+      "person": "REFIH",
+      "status": "done",
+      "details": "Generate HTTP responses with status, headers, body"
+    },
+    {
+      "id": "p0-6",
+      "name": "HttpResponse::setHeader() method",
+      "person": "REFIH",
+      "status": "done",
+      "details": "Support for custom headers (Keep-Alive, etc.)"
+    },
+    {
+      "id": "p0-7",
+      "name": "Server::handleClientWrite() fix",
+      "person": "REFIH",
+      "status": "done",
+      "details": "Proper partial send handling"
+    },
+    {
+      "id": "p0-8",
+      "name": "Comprehensive test suite",
+      "person": "REFIH",
+      "status": "done",
+      "details": "6 unit tests + integration tests"
+    },
+    {
+      "id": "p0-9",
+      "name": "Interface frozen & documented",
+      "person": "REFIH",
+      "status": "done",
+      "details": "Ready for team to build on top"
+    },
+    {
+      "id": "p0-10",
+      "name": "RequestHandler extraction",
+      "person": "REFIH",
+      "status": "todo",
+      "details": "Extract handler logic from Server.cpp (reduce conflicts)"
+    }
+  ],
+  "phase1_core": [
+    {
+      "id": "p1c-1",
+      "name": "Multi-socket listening",
+      "status": "todo",
+      "dependency": "Phase 0",
+      "details": "Each ServerConfig gets its own fd, all in one poll()"
+    },
+    {
+      "id": "p1c-2",
+      "name": "Timeout / hang protection",
+      "status": "todo",
+      "dependency": "Phase 0",
+      "details": "poll timeout + last-activity tracking per client"
+    },
+    {
+      "id": "p1c-3",
+      "name": "Signal handling (SIGINT)",
+      "status": "todo",
+      "dependency": "Phase 0",
+      "details": "Clean shutdown on signals"
+    },
+    {
+      "id": "p1c-4",
+      "name": "Keep-Alive support",
+      "status": "todo",
+      "dependency": "Person 2: setHeader()",
+      "details": "Respect Connection header, keep sockets open"
+    },
+    {
+      "id": "p1c-5",
+      "name": "Stress-test infrastructure",
+      "status": "todo",
+      "dependency": "Phases 1-2 complete",
+      "details": "Apache Bench compatibility, load testing"
+    }
+  ],
+  "phase1_http": [
+    {
+      "id": "p1h-1",
+      "name": "Chunked transfer-encoding",
+      "status": "todo",
+      "dependency": "None",
+      "details": "Request unchunking + chunked response writing"
+    },
+    {
+      "id": "p1h-2",
+      "name": "URL decoding & .. hardening",
+      "status": "todo",
+      "dependency": "None",
+      "details": "%2e, %20 handling, path traversal protection"
+    },
+    {
+      "id": "p1h-3",
+      "name": "Missing status codes",
+      "status": "todo",
+      "dependency": "None",
+      "details": "411, 505, 301/302, etc."
+    },
+    {
+      "id": "p1h-4",
+      "name": "HttpResponse::setHeader() interface",
+      "status": "todo",
+      "dependency": "Phase 0",
+      "details": "Generic header support (shared with REFIH)"
+    },
+    {
+      "id": "p1h-5",
+      "name": "Redirect header (Location:)",
+      "status": "todo",
+      "dependency": "Person 3: redirect field",
+      "details": "Generate Location: headers for redirects"
+    },
+    {
+      "id": "p1h-6",
+      "name": "Stream-based body parsing",
+      "status": "todo",
+      "dependency": "None",
+      "details": "Replace \\0-sensitive parsing"
+    }
+  ],
+  "phase1_config": [
+    {
+      "id": "p1x-1",
+      "name": "CGI engine (fork/execve/pipe)",
+      "status": "todo",
+      "dependency": "Phase 0",
+      "details": "Fork/execve, pipe setup, env variables"
+    },
+    {
+      "id": "p1x-2",
+      "name": "Add redirect field to Location",
+      "status": "todo",
+      "dependency": "Phase 0",
+      "details": "Support redirect directives"
+    },
+    {
+      "id": "p1x-3",
+      "name": "Add cgi_extension mapping",
+      "status": "todo",
+      "dependency": "Phase 0",
+      "details": "Map file extensions to CGI handlers"
+    },
+    {
+      "id": "p1x-4",
+      "name": "Multipart/form-data upload",
+      "status": "todo",
+      "dependency": "None",
+      "details": "Improve upload support beyond basic POST"
+    }
+  ]
+}
