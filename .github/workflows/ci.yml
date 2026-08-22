@@ -17,10 +17,5 @@ jobs:
       - name: Build server
         run: make
 
-      - name: Build tests
-        working-directory: tests
-        run: ./compile_tests.sh
-
       - name: Run tests
-        working-directory: tests
-        run: ./run_all_tests.sh
+        run: make run_tests

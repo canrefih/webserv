@@ -13,7 +13,7 @@ int main()
 	
 	std::cout << "\nTest 1: Load configuration..." << std::endl;
 	Config config;
-	if (!config.parse("../test.conf"))
+	if (!config.parse("config/test.conf"))
 	{
 		std::cerr << "FAIL: Could not load test.conf" << std::endl;
 		return 1;
