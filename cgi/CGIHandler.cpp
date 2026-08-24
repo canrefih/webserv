@@ -1,4 +1,5 @@
 #include "CGIHandler.hpp"
+#include "Signal.hpp"
 #include <fcntl.h>
 #include <cerrno>
 #include <cstdlib>
@@ -176,6 +177,7 @@ int		CGIHandler::tryWait( int &exitCode )
 		return (-1);
 	}
 	running = false;
+	g_serverRunning = false;
 	if (WIFEXITED(status))
 		exitCode = WEXITSTATUS(status);
 	else if (WIFSIGNALED(status))

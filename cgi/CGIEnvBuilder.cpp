@@ -70,7 +70,7 @@ std::vector<std::string> buildCGIEnv(const HttpRequest &request, const std::stri
 	std::map<std::string, std::string>::const_iterator it = headers.begin();
 	for (; it != headers.end(); ++it)
 	{
-		if (it->first == "Content-Type" || it->first == "Content-Length")
+		if (it->first == "content-type" || it->first == "content-length")
 			continue;
 		env.push_back(toEnvHeader(it->first) + "=" + it->second);
 	}

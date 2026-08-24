@@ -19,6 +19,11 @@ TESTS_SRCS = tests/test_config_parsing.cpp\
 		tests/test_server_integration.cpp\
 		tests/test_serverconfig.cpp\
 
+CGI_TEST_SRCS = cgi/CGIHandler.cpp \
+		cgi/CGIEnvBuilder.cpp \
+		src/HttpRequest.cpp \
+		tests/test_cgi.cpp
+
 OBJS = $(SRCS:src/%.cpp=obj/%.o)
 TESTS = $(TESTS_SRCS:tests/%.cpp=tests/bin/%.out)
 TESTS_OBJS = $(filter-out obj/main.o,$(OBJS))
@@ -46,6 +51,11 @@ tests/bin/%.out: tests/%.cpp
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $(CPPFLAGS) $(TESTS_OBJS) $< -o $@
 
+test_cgi: $(CGI_TEST_SRCS)
+	@mkdir -p tests/bin
+	$(CXX) $(CXXFLAGS) $(CPPFLAGS) $(CGI_TEST_SRCS) -o tests/bin/test_cgi.out
+	./tests/bin/test_cgi.out
+
 clean:
 	rm -rf obj
 	rm -rf tests/bin
@@ -55,4 +65,4 @@ fclean: clean
 
 re: fclean all
 
-.PHONY: all clean fclean re
+.PHONY: all clean fclean re test_cgi
