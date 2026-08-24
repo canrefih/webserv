@@ -5,6 +5,9 @@
 #include <vector>
 #include "ServerConfig.hpp"
 
+/*
+ * Config class for parsing and managing server configuration.
+ */
 class Config
 {
 	private:

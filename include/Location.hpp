@@ -4,6 +4,11 @@
 #include <string>
 #include <vector>
 
+/*
+Location class represents a specific location block in the server configuration.
+It holds information about the path, root directory, index file, autoindex setting, upload settings, and allowed HTTP methods for that location.
+*/
+
 class Location
 {
     private:
@@ -37,7 +42,7 @@ class Location
         bool getUpload() const;
         const std::string &getUploadStore() const;
 
-        bool isMethodAllowed(const std::string &method) const;
+        bool isMethodAllowed(const std::string &method) const; // Check if a specific HTTP method is allowed for this location
 };
 
 #endif
