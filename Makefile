@@ -10,7 +10,11 @@ SRCS = src/main.cpp \
        src/ServerConfig.cpp \
        src/HttpRequest.cpp \
        src/HttpResponse.cpp \
-       src/Location.cpp
+       src/Location.cpp \
+       src/RequestHandler.cpp \
+       src/Signal.cpp \
+       src/CGIHandler.cpp \
+       src/CGIEnvBuilder.cpp
 
 TESTS_SRCS = tests/test_config_parsing.cpp\
 		tests/test_http_request.cpp\
@@ -18,11 +22,7 @@ TESTS_SRCS = tests/test_config_parsing.cpp\
 		tests/test_location.cpp\
 		tests/test_server_integration.cpp\
 		tests/test_serverconfig.cpp\
-
-CGI_TEST_SRCS = cgi/CGIHandler.cpp \
-		cgi/CGIEnvBuilder.cpp \
-		src/HttpRequest.cpp \
-		tests/test_cgi.cpp
+		tests/test_cgi.cpp\
 
 OBJS = $(SRCS:src/%.cpp=obj/%.o)
 TESTS = $(TESTS_SRCS:tests/%.cpp=tests/bin/%.out)
@@ -51,9 +51,7 @@ tests/bin/%.out: tests/%.cpp
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $(CPPFLAGS) $(TESTS_OBJS) $< -o $@
 
-test_cgi: $(CGI_TEST_SRCS)
-	@mkdir -p tests/bin
-	$(CXX) $(CXXFLAGS) $(CPPFLAGS) $(CGI_TEST_SRCS) -o tests/bin/test_cgi.out
+test_cgi: tests/bin/test_cgi.out
 	./tests/bin/test_cgi.out
 
 clean:

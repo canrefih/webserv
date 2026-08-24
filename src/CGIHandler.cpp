@@ -177,7 +177,7 @@ int		CGIHandler::tryWait( int &exitCode )
 		return (-1);
 	}
 	running = false;
-	g_serverRunning = false;
+	g_serverRunning = false; // test with Signal.hpp for main loop
 	if (WIFEXITED(status))
 		exitCode = WEXITSTATUS(status);
 	else if (WIFSIGNALED(status))

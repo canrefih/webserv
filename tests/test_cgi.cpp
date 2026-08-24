@@ -1,5 +1,5 @@
-#include "../cgi/CGIHandler.hpp"
-#include "../cgi/CGIEnvBuilder.hpp"
+#include "../include/CGIHandler.hpp"
+#include "../include/CGIEnvBuilder.hpp"
 #include "../include/HttpRequest.hpp"
 
 #include <iostream>

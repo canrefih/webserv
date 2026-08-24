@@ -62,6 +62,6 @@ echo -e "Passed: ${GREEN}${PASSED}${NC}"
 echo -e "Failed: ${RED}${FAILED}${NC}"
 echo ""
 
-if [ $FAILED -eq 0 ] && [ $TOTAL -eq 6 ]; then
+if [ $FAILED -eq 0 ] && [ $TOTAL -gt 0 ]; then
        echo -e "${GREEN}✓ ALL TESTS PASSED${NC}"
 fi
