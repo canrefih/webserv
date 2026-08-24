@@ -26,23 +26,22 @@ CGIHandler::~CGIHandler()
 
 /*
 Fills argv/envp (and the vectors that own the underlying strings)
-with the values needed to launch the CGI script via execve().
-Currently hardcoded for testing; will later be built dynamically
-from the actual HTTP request (method, path, headers).
+with the values needed to launch the CGI script via execve()..
 */
-void CGIHandler::setup( void )
+void	CGIHandler::setup(const std::string &scriptPath, const std::string &interpreterPath, const std::vector<std::string> &env)
 {
-	scriptPath = "./test/hello.py";
-	tmps.push_back("/usr/bin/python3");
-	tmps.push_back(scriptPath);
-	for(size_t i = 0; i < tmps.size(); i++)
-		argv.push_back(tmps[i].c_str());
-	argv.push_back(NULL);
-	envTmps.push_back("REQUEST_METHOD=GET");
-	envTmps.push_back("PATH=/usr/bin");
-	for(size_t i = 0; i < envTmps.size(); i++)
-		envp.push_back(envTmps[i].c_str());
-	envp.push_back(NULL);
+	_scriptPath = scriptPath;
+	_tmps.push_back(interpreterPath);
+	_tmps.push_back(scriptPath);
+	for(std::size_t i = 0; i < _tmps.size(); i++)
+		_argv.push_back(_tmps[i].c_str());
+	_argv.push_back(NULL);
+	_envTmps = env;
+	for(std::size_t i = 0; i < _envTmps.size(); i++)
+		_envp.push_back(_envTmps[i].c_str());
+	_envp.push_back(NULL);
+
+
 }
 
 /*
@@ -68,7 +67,10 @@ bool	CGIHandler::setupPipes( void )
 	if (!setNonBlocking(fd[1]) || !setNonBlocking(fd[2]))
 	{
 		std::cerr << strerror(errno) << " Failed to set pipes non-blocking." << std::endl;
-		close(fd[0]); close(fd[1]); close(fd[2]); close(fd[3]);
+		close(fd[0]);
+		close(fd[1]);
+		close(fd[2]);
+		close(fd[3]);
 		return (0);
 	}
 	return (1);
@@ -90,7 +92,7 @@ void	CGIHandler::childProcess( void )
 	close(fd[1]);
 	close(fd[2]);
 	close(fd[3]);
-	execve(argv[0], const_cast<char**>(&argv[0]), const_cast<char**>(&envp[0]));
+	execve(_argv[0], const_cast<char**>(&_argv[0]), const_cast<char**>(&_envp[0]));
 	std::cerr<< strerror(errno) << std::endl;
 	exit(errno);
 }
@@ -103,7 +105,7 @@ fd[1]/fd[2] through poll() and reaping the child via tryWait().
 */
 bool	CGIHandler::start( void )
 {
-	if (argv.size() == 0)
+	if (_argv.size() == 0)
 	{
 		std::cerr << "Problem with argv[0]" << std::endl;
 		return (false);

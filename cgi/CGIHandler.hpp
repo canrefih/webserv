@@ -12,11 +12,11 @@
 class CGIHandler
 {
 private:
-	std::vector<const char*> argv;
-	std::vector<const char*> envp;
-	std::vector<std::string> tmps;
-	std::vector<std::string> envTmps;
-	std::string scriptPath;
+	std::vector<const char*> _argv;
+	std::vector<const char*> _envp;
+	std::vector<std::string> _tmps;
+	std::vector<std::string> _envTmps;
+	std::string _scriptPath;
 
 	int fd[4];
 	pid_t pid;
@@ -28,7 +28,7 @@ private:
 public:
 	CGIHandler( void );
 	~CGIHandler();
-	void	setup( void );
+	void	setup(const std::string &scriptPath, const std::string &interpreterPath, const std::vector<std::string> &env);
 
 	bool	start( void );
 
