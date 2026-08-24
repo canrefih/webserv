@@ -24,7 +24,7 @@ int main()
 	{
 		// Child: Server
 		Config config;
-		if (!config.parse("../test.conf"))
+		if (!config.parse("../config/test.conf"))
 		{
 			std::cerr << "FAIL: Could not parse config" << std::endl;
 			exit(1);

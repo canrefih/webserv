@@ -23,7 +23,7 @@ int main()
 	{
 		// Child: Server çalışsın
 		Config config;
-		if (!config.parse("../test.conf"))
+		if (!config.parse("../config/test.conf"))
 		{
 			std::cerr << "FAIL: Could not parse config" << std::endl;
 			exit(1);

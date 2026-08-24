@@ -23,6 +23,10 @@ TESTS_SRCS = tests/test_config_parsing.cpp\
 		tests/test_server_integration.cpp\
 		tests/test_serverconfig.cpp\
 		tests/test_cgi.cpp\
+		tests/test_keep_alive.cpp\
+		tests/test_multi_socket.cpp\
+		tests/test_signal_handling.cpp\
+		tests/test_timeout_protection.cpp
 
 OBJS = $(SRCS:src/%.cpp=obj/%.o)
 TESTS = $(TESTS_SRCS:tests/%.cpp=tests/bin/%.out)

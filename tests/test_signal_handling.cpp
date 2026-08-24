@@ -17,7 +17,7 @@ int main()
 	if (pid == 0)
 	{
 		Config config;
-		if (!config.parse("../test.conf"))
+		if (!config.parse("../config/test.conf"))
 		{
 			std::cerr << "FAIL: Config parse failed" << std::endl;
 			exit(1);

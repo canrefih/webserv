@@ -46,7 +46,7 @@ int main()
 		signal(SIGTERM, testSignalHandler);
 
 		Config config;
-		if (!config.parse("../test.conf"))
+		if (!config.parse("../config/test.conf"))
 		{
 			std::cerr << "FAIL: Config parse failed" << std::endl;
 			exit(1);
