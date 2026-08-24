@@ -1,27 +1,29 @@
 #include "Server.hpp"
+#include "Signal.hpp"
 
 #include <iostream>
 #include <cstring>
 #include <cstdlib>
 #include <cerrno>
 #include <sstream>
+#include <csignal>
 
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 
-#include <dirent.h>
-#include <sys/socket.h>
-#include <netdb.h>
-#include <netinet/in.h>
+#include <dirent.h> // For directory operations
+#include <sys/socket.h> // For socket functions
+#include <netdb.h> // For getaddrinfo
+#include <netinet/in.h> // For sockaddr_in
 
 Server::Server(const Config &config)
 	: _config(config)
 {
 }
 
-Server::~Server()
+Server::~Server() // Destructor: Close all listening sockets
 {
 	std::vector<int>::iterator it;
 	for (it = _listenFds.begin(); it != _listenFds.end(); ++it)
@@ -31,9 +33,9 @@ Server::~Server()
 	}
 }
 
-void Server::setNonBlocking(int fd)
+void Server::setNonBlocking(int fd) // Set a socket to non-blocking mode
 {
-	int flags = fcntl(fd, F_GETFL, 0);
+	int flags = fcntl(fd, F_GETFL, 0); // Get the current file status flags for the socket
 
 	if (flags == -1)
 	{
@@ -42,7 +44,10 @@ void Server::setNonBlocking(int fd)
 		close(fd);
 		std::exit(1);
 	}
-
+	/*
+		To not block the server when accepting connections or reading/writing data, we set the socket to non-blocking mode.
+		This allows the server to continue processing other sockets even if one socket is not ready for I/O.
+	*/
 	if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) == -1)
 	{
 		std::cerr << "Error: fcntl(F_SETFL) failed: "
@@ -52,7 +57,16 @@ void Server::setNonBlocking(int fd)
 	}
 }
 
-void Server::createSockets()
+/*
+fd 3 → listening socket
+fd 4 → client A
+fd 5 → client B
+fd 6 → client C
+Listening socket checks for incoming connections (accept)
+Client sockets check for incoming data (read) or readiness to send data (write)
+*/
+// SOCKET CREATION
+void Server::createSockets() // Create listening sockets for each server configuration
 {
 	const std::vector<ServerConfig> &servers = _config.getServers();
 
@@ -63,11 +77,10 @@ void Server::createSockets()
 	}
 
 	std::vector<ServerConfig>::const_iterator it;
-	std::size_t idx = 0;
 
-	for (it = servers.begin(); it != servers.end(); ++it, ++idx)
+	for (it = servers.begin(); it != servers.end(); ++it) // for each server configuration, create a socket
 	{
-		int fd = socket(AF_INET, SOCK_STREAM, 0);
+		int fd = socket(AF_INET, SOCK_STREAM, 0); // Create a TCP socket
 
 		if (fd == -1)
 		{
@@ -79,7 +92,7 @@ void Server::createSockets()
 		int opt = 1;
 
 		if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR,
-					   &opt, sizeof(opt)) == -1)
+					   &opt, sizeof(opt)) == -1) // Set socket option to reuse address
 		{
 			std::cerr << "Error: setsockopt() failed: "
 					  << strerror(errno) << std::endl;
@@ -87,33 +100,35 @@ void Server::createSockets()
 			std::exit(1);
 		}
 
-		setNonBlocking(fd);
-		_listenFds.push_back(fd);
+		setNonBlocking(fd); // Set the socket to non-blocking mode
+		_listenFds.push_back(fd); // Add the socket file descriptor to the list of listening sockets
 	}
 }
 
-void Server::bindAndListenSocket(int fd, const ServerConfig &serverConfig)
+// BIND AND LISTEN
+void Server::bindAndListenSocket(int fd, const ServerConfig &serverConfig) // Bind the socket to the specified host and port, and start listening for incoming connections
 {
 	struct addrinfo hints;
 	struct addrinfo *result = NULL;
 
-	std::memset(&hints, 0, sizeof(hints));
+	std::memset(&hints, 0, sizeof(hints)); // Clear the hints structure to zero before using it
 
+	// Set up the hints for getaddrinfo to specify the desired socket type and address family
 	hints.ai_family = AF_INET;
 	hints.ai_socktype = SOCK_STREAM;
 	hints.ai_flags = AI_PASSIVE;
 
 	std::ostringstream portStream;
-	portStream << serverConfig.getPort();
+	portStream << serverConfig.getPort(); // Convert the port number to a string for getaddrinfo
 
-	std::string port = portStream.str();
+	std::string port = portStream.str(); // Get the port number as a string
 
 	int status = getaddrinfo(
 		serverConfig.getHost().c_str(),
 		port.c_str(),
 		&hints,
 		&result
-	);
+	); // Get address information for the specified host and port, using the hints to specify the desired socket type and address family
 
 	if (status != 0)
 	{
@@ -123,7 +138,7 @@ void Server::bindAndListenSocket(int fd, const ServerConfig &serverConfig)
 		std::exit(1);
 	}
 
-	if (bind(fd, result->ai_addr, result->ai_addrlen) == -1)
+	if (bind(fd, result->ai_addr, result->ai_addrlen) == -1) // Bind the socket to the specified address and port
 	{
 		std::cerr << "Error: bind() failed on "
 				  << serverConfig.getHost() << ":"
@@ -136,7 +151,7 @@ void Server::bindAndListenSocket(int fd, const ServerConfig &serverConfig)
 
 	freeaddrinfo(result);
 
-	if (listen(fd, SOMAXCONN) == -1)
+	if (listen(fd, SOMAXCONN) == -1) // Start listening for incoming connections on the socket, with a maximum backlog of SOMAXCONN. SOMAXCONN is a constant that specifies the maximum number of pending connections that can be queued for acceptance. It is defined in the system headers and represents the maximum value allowed by the operating system for the listen backlog.
 	{
 		std::cerr << "Error: listen() failed: "
 				  << strerror(errno) << std::endl;
@@ -145,9 +160,37 @@ void Server::bindAndListenSocket(int fd, const ServerConfig &serverConfig)
 	}
 }
 
-void Server::run()
+/*
+POLLIN: There is data to read on the socket
+POLLOUT: Writing is now possible on the socket
+POLLERR: An error occurred on the socket
+request
+	↓
+┌────────┐
+│POLLIN  │
+└───┬────┘
+	│
+	▼
+request ready
+	│
+	▼
+response ready
+	│
+	▼
+┌─────────┐
+│ POLLOUT │
+└───┬─────┘
+	│
+response done
+	│
+	▼
+┌─────────┐
+│ POLLIN  │
+└─────────┘
+*/
+void Server::run() // Main server loop: Poll for events on listening and client sockets
 {
-	createSockets();
+	createSockets(); // Create listening sockets for each server configuration
 
 	const std::vector<ServerConfig> &servers = _config.getServers();
 	std::vector<int>::iterator it;
@@ -155,8 +198,8 @@ void Server::run()
 
 	for (it = _listenFds.begin(); it != _listenFds.end(); ++it, ++idx)
 	{
-		bindAndListenSocket(*it, servers[idx]);
-		addPollFd(*it, POLLIN);
+		bindAndListenSocket(*it, servers[idx]); // Bind and listen on the socket for the corresponding server configuration
+		addPollFd(*it, POLLIN); // Add the listening socket to the poll file descriptor list for monitoring incoming connections
 
 		std::cout << "Listening on "
 				  << servers[idx].getHost()
@@ -167,24 +210,30 @@ void Server::run()
 
 	std::cout << "Server started" << std::endl;
 
-	while (true)
+	while (g_serverRunning) // Main server loop: Poll for events on listening and client sockets
 	{
 		int ready = poll(
 			&_pollFds[0],
 			_pollFds.size(),
-			-1
+			1000  // 1 second timeout to allow checking g_serverRunning
 		);
 
 		if (ready == -1)
 		{
+			if (errno == EINTR)
+				continue;  // Signal interrupted, check g_serverRunning again
+			
 			std::cerr << "Error: poll() failed: "
 					  << strerror(errno) << std::endl;
 			return;
 		}
 
+		if (ready == 0)
+			continue;  // Timeout, again check for g_serverRunning
+
 		std::size_t i = 0;
 
-		while (i < _pollFds.size())
+		while (i < _pollFds.size()) // Iterate through the poll file descriptors
 		{
 			bool isListenSocket = false;
 			const ServerConfig *serverConfig = NULL;
@@ -193,7 +242,7 @@ void Server::run()
 
 			for (listenIt = _listenFds.begin(); listenIt != _listenFds.end(); ++listenIt)
 			{
-				if (_pollFds[i].fd == *listenIt)
+				if (_pollFds[i].fd == *listenIt) // Check if the current pollfd is a listening socket
 				{
 					isListenSocket = true;
 					std::size_t serverIdx = listenIt - _listenFds.begin();
@@ -202,7 +251,7 @@ void Server::run()
 				}
 			}
 
-			if (isListenSocket)
+			if (isListenSocket) // If it's a listening socket, accept new client connections
 			{
 				if (_pollFds[i].revents & POLLIN)
 					acceptClient(_pollFds[i].fd, *serverConfig);
@@ -213,7 +262,7 @@ void Server::run()
 
 			bool removed = false;
 
-			if (_pollFds[i].revents & POLLIN)
+			if (_pollFds[i].revents & POLLIN) // If the client socket is ready for reading, handle the read event
 			{
 				std::size_t oldSize = _pollFds.size();
 
@@ -223,7 +272,7 @@ void Server::run()
 					removed = true;
 			}
 
-			if (!removed && (_pollFds[i].revents & POLLOUT))
+			if (!removed && (_pollFds[i].revents & POLLOUT)) // If the client socket is ready for writing, handle the write event
 			{
 				std::size_t oldSize = _pollFds.size();
 
@@ -233,13 +282,32 @@ void Server::run()
 					removed = true;
 			}
 
-			if (!removed)
+			if (!removed) // If the client socket was not removed, move to the next pollfd
 				++i;
 		}
 	}
+
+	// Close the listening sockets and client connections when the server is shutting down
+	std::cout << "Shutting down..." << std::endl;
+
+	std::vector<int>::iterator listenIt;
+	for (listenIt = _listenFds.begin(); listenIt != _listenFds.end(); ++listenIt)
+	{
+		if (*listenIt != -1)
+			close(*listenIt);
+	}
+
+	std::map<int, std::string>::iterator bufferIt;
+	for (bufferIt = _clientBuffers.begin(); bufferIt != _clientBuffers.end(); ++bufferIt)
+	{
+		if (bufferIt->first != -1)
+			close(bufferIt->first);
+	}
+
+	std::cout << "Server stopped" << std::endl;
 }
 
-void Server::addPollFd(int fd, short events)
+void Server::addPollFd(int fd, short events) // Add a file descriptor to the poll list with specified events (POLLIN, POLLOUT, etc.)
 {
 	struct pollfd pfd;
 
@@ -250,43 +318,39 @@ void Server::addPollFd(int fd, short events)
 	_pollFds.push_back(pfd);
 }
 
+// ACCEPT CLIENT
 void Server::acceptClient(int listenFd, const ServerConfig &serverConfig)
 {
-	struct sockaddr_storage clientAddress;
-	socklen_t clientAddressSize = sizeof(clientAddress);
+	struct sockaddr_storage clientAddress; // Store the address of the connecting client
+	socklen_t clientAddressSize = sizeof(clientAddress); // Size of the client address structure
 
 	int clientFd = accept(
 		listenFd,
 		reinterpret_cast<struct sockaddr *>(&clientAddress),
 		&clientAddressSize
-	);
+	); // Accept a new client connection on the listening socket, returning a new socket file descriptor for the client connection
 
 	if (clientFd == -1)
 		return;
 
-	setNonBlocking(clientFd);
+	setNonBlocking(clientFd); // Set the new client socket to non-blocking mode to avoid blocking the server when reading/writing data
 
-	addPollFd(clientFd, POLLIN);
-	_clientBuffers[clientFd] = "";
-	_clientServers[clientFd] = &serverConfig;
+	addPollFd(clientFd, POLLIN); // Add the new client socket to the poll list, monitoring for incoming data (POLLIN)
+	_clientBuffers[clientFd] = ""; // Initialize the buffer for the new client socket to store incoming request data
+	_clientServers[clientFd] = &serverConfig; // Associate the new client socket with the corresponding server configuration, allowing the server to handle requests based on the specific server settings
+	_clientKeepAlive[clientFd] = true; // Initialize the keep-alive status for the new client socket
 	std::cout << "New client connected: fd="
 			  << clientFd << " on "
 			  << serverConfig.getHost() << ":"
 			  << serverConfig.getPort() << std::endl;
 }
 
+// HANDLE CLIENT READ
 void Server::handleClientRead(std::size_t index)
 {
-	char buffer[4096];
-
+	char buffer[4096]; // Buffer to read incoming data from the client socket
 	int clientFd = _pollFds[index].fd;
-
-	ssize_t bytesRead = recv(
-		clientFd,
-		buffer,
-		sizeof(buffer),
-		0
-	);
+	ssize_t bytesRead = recv(clientFd, buffer, sizeof(buffer), 0); // Read data from the client socket into the buffer, returning the number of bytes read
 
 	if (bytesRead == 0)
 	{
@@ -300,59 +364,53 @@ void Server::handleClientRead(std::size_t index)
 		return;
 	}
 
-	_clientBuffers[clientFd].append(buffer, bytesRead);
+	_clientBuffers[clientFd].append(buffer, bytesRead); // Append the received data to the client's buffer, allowing the server to accumulate the request data until a complete request is received
+	std::string &requestBuffer = _clientBuffers[clientFd]; // Reference to the client's buffer for easier access and manipulation
+	std::size_t headerEnd = requestBuffer.find("\r\n\r\n"); // Find the end of the HTTP headers in the request buffer, which is indicated by a double CRLF ("\r\n\r\n"). If not found, the request is incomplete and we wait for more data.
 
-	std::string &requestBuffer = _clientBuffers[clientFd];
-
-	std::size_t headerEnd = requestBuffer.find("\r\n\r\n");
-
-	if (headerEnd == std::string::npos)
+	if (headerEnd == std::string::npos) // If the end of the headers is not found, the request is incomplete, so we return and wait for more data to arrive
 		return;
 
 	HttpRequest request;
 
-	if (!request.parse(requestBuffer))
+	if (!request.parse(requestBuffer)) // If the request parsing fails, we set an error response indicating a bad request (400) and prepare to send it back to the client
 	{
 		HttpResponse response;
-
 		response.setStatus(400, "Bad Request");
 		response.setBody("Bad Request\n");
 		response.setContentType("text/plain");
 
 		_clientWriteBuffers[clientFd] = response.toString();
 		_pollFds[index].events = POLLOUT;
-
 		requestBuffer.clear();
 		return;
 	}
 
 	std::string contentLength = request.getHeader("Content-Length");
-
 	const ServerConfig *serverConfig = _clientServers[clientFd];
 
+	/*
+		If the request has a Content-Length header, we check if the body size exceeds the maximum allowed size for the server configuration.
+		If it does, we set an error response indicating that the payload is too large (413) and prepare to send it back to the client.
+		If the body is not fully received yet, we return and wait for more data to arrive.
+	*/
 	if (!contentLength.empty())
 	{
-		std::size_t expectedBodyLength =
-			std::atoi(contentLength.c_str());
+		std::size_t expectedBodyLength = std::atoi(contentLength.c_str());
 
 		if (expectedBodyLength > serverConfig->getClientMaxBodySize())
 		{
 			HttpResponse response;
-
-			setErrorResponse(
-			*serverConfig,
-			response,
-					413,
-					"Payload Too Large",
-					"Payload Too Large\n"
-			);
+			response.setStatus(413, "Payload Too Large");
+			response.setBody("Payload Too Large\n");
+			response.setContentType("text/plain");
 
 			_clientWriteBuffers[clientFd] = response.toString();
 			_pollFds[index].events = POLLOUT;
-
 			requestBuffer.clear();
 			return;
 		}
+
 		std::size_t bodyStart = headerEnd + 4;
 		std::size_t actualBodyLength = requestBuffer.size() - bodyStart;
 
@@ -364,296 +422,30 @@ void Server::handleClientRead(std::size_t index)
 	std::cout << "Target:  " << request.getTarget() << std::endl;
 	std::cout << "Version: " << request.getVersion() << std::endl;
 
-	const Location *location = serverConfig->findLocation(request.getTarget());
+	// Handle the request using the RequestHandler and prepare the response to be sent back to the client
 	HttpResponse response;
+	RequestHandler handler(*serverConfig);
+	handler.handleRequest(request, response);
 
-	if (location != NULL &&
-		!location->isMethodAllowed(request.getMethod()))
+	std::string connection = request.getHeader("Connection");
+
+	if (connection == "close")
 	{
-		setErrorResponse(
-			*serverConfig,
-			response,
-				405,
-				"Method Not Allowed",
-				"Method Not Allowed\n"
-		);
-	}
-	else if (request.getMethod() == "POST")
-	{
-		if (location == NULL || !location->getUpload())
-		{
-			response.setStatus(405, "Method Not Allowed");
-			response.setBody("Method Not Allowed\n");
-			response.setContentType("text/plain");
-		}
-		else
-		{
-			static int uploadCounter = 0;
-
-			++uploadCounter;
-
-			std::ostringstream filename;
-			filename << location->getUploadStore()
-					<< "/upload-"
-					<< uploadCounter
-					<< ".txt";
-
-			if (location->getUploadStore().empty())
-			{
-				response.setStatus(500, "Internal Server Error");
-				response.setBody("Upload store is not configured\n");
-				response.setContentType("text/plain");
-			}
-			else
-			{
-				int fd = open(
-					filename.str().c_str(),
-					O_WRONLY | O_CREAT | O_TRUNC,
-					0644
-				);
-
-				if (fd == -1)
-				{
-					response.setStatus(500, "Internal Server Error");
-					response.setBody("Internal Server Error\n");
-					response.setContentType("text/plain");
-				}
-				else
-				{
-					const std::string &body = request.getBody();
-
-					if (!body.empty())
-					{
-						ssize_t bytesWritten = write(
-							fd,
-							body.c_str(),
-							body.size()
-						);
-
-						if (bytesWritten != static_cast<ssize_t>(body.size()))
-						{
-							close(fd);
-
-							response.setStatus(500, "Internal Server Error");
-							response.setBody("Internal Server Error\n");
-							response.setContentType("text/plain");
-
-							_clientWriteBuffers[clientFd] =
-								response.toString();
-
-							_pollFds[index].events = POLLOUT;
-							requestBuffer.clear();
-							return;
-						}
-					}
-
-					close(fd);
-
-					response.setStatus(201, "Created");
-					response.setBody("File uploaded\n");
-					response.setContentType("text/plain");
-				}
-			}
-		}
-	}
-	else if (request.getMethod() == "DELETE")
-	{
-		if (request.getTarget().find("..") != std::string::npos)
-		{
-			setErrorResponse(
-			*serverConfig,
-			response,
-					403,
-					"Forbidden",
-					"Forbidden\n"
-			);
-		}
-		else
-		{
-			std::string root = serverConfig->getRoot();
-			std::string path;
-
-			if (location != NULL && !location->getRoot().empty())
-			{
-				root = location->getRoot();
-
-				std::string locationPath = location->getPath();
-				std::string relativePath =
-					request.getTarget().substr(locationPath.size());
-
-				if (relativePath.empty())
-					relativePath = "/";
-
-				path = root + relativePath;
-			}
-			else
-			{
-				path = root + request.getTarget();
-			}
-
-			if (!fileExists(path) && !isDirectory(path))
-			{
-				setErrorResponse(
-			*serverConfig,
-			response,
-						404,
-						"Not Found",
-						"Not Found\n"
-				);
-			}
-			else if (isDirectory(path))
-			{
-				setErrorResponse(
-			*serverConfig,
-			response,
-						403,
-						"Forbidden",
-						"Forbidden\n"
-				);
-			}
-			else
-			{
-					if (unlink(path.c_str()) == 0)
-					{
-							response.setStatus(204, "No Content");
-							response.setBody("");
-							response.setContentType("text/plain");
-					}
-					else
-					{
-							response.setStatus(500, "Internal Server Error");
-							response.setBody("Internal Server Error\n");
-							response.setContentType("text/plain");
-					}
-			}
-		}
-	}
-	else if (request.getMethod() == "GET")
-	{
-		if (request.getTarget().find("..") != std::string::npos)
-		{
-			setErrorResponse(
-			*serverConfig,
-			response,
-					403,
-					"Forbidden",
-					"Forbidden\n"
-			);
-		}
-		else
-		{
-			std::string root = serverConfig->getRoot();
-			std::string path;
-
-			if (location != NULL && !location->getRoot().empty())
-			{
-				root = location->getRoot();
-
-				std::string locationPath = location->getPath();
-				std::string relativePath =
-					request.getTarget().substr(locationPath.size());
-
-				if (relativePath.empty())
-					relativePath = "/";
-
-				path = root + relativePath;
-			}
-			else
-			{
-				path = root + request.getTarget();
-			}
-
-			if (!fileExists(path) && !isDirectory(path))
-			{
-				setErrorResponse(
-			*serverConfig,
-			response,
-						404,
-						"Not Found",
-						"Not Found\n"
-				);
-			}
-			else if (isDirectory(path))
-			{
-				std::string directoryPath = path;
-
-				if (directoryPath[directoryPath.size() - 1] != '/')
-					directoryPath += "/";
-
-				std::string index = serverConfig->getIndex();
-
-				if (location != NULL && !location->getIndex().empty())
-					index = location->getIndex();
-
-				std::string indexPath =
-						directoryPath + index;
-
-				if (fileExists(indexPath))
-				{
-					std::string body = readFile(indexPath);
-
-					response.setStatus(200, "OK");
-					response.setBody(body);
-					response.setContentType(getContentType(indexPath));
-				}
-				else
-				{
-					bool autoindex = serverConfig->getAutoIndex();
-
-					if (location != NULL && location->isAutoIndexSet())
-						autoindex = location->getAutoIndex();
-
-					if (autoindex)
-					{
-						std::string body =
-								generateDirectoryListing(
-										directoryPath,
-										request.getTarget()
-								);
-
-						response.setStatus(200, "OK");
-						response.setBody(body);
-						response.setContentType("text/html");
-					}
-					else
-					{
-						setErrorResponse(
-			*serverConfig,
-			response,
-								403,
-								"Forbidden",
-								"Forbidden\n"
-						);
-					}
-				}
-			}
-			else
-			{
-				std::string body = readFile(path);
-
-				response.setStatus(200, "OK");
-				response.setBody(body);
-				response.setContentType(getContentType(path));
-			}
-		}
+		_clientKeepAlive[clientFd] = false;
+		response.setHeader("Connection", "close");
 	}
 	else
 	{
-		setErrorResponse(
-			*serverConfig,
-			response,
-				405,
-				"Method Not Allowed",
-				"Method Not Allowed\n"
-		);
+		_clientKeepAlive[clientFd] = true;
+		response.setHeader("Connection", "keep-alive");
 	}
+
 	_clientWriteBuffers[clientFd] = response.toString();
-
-	_pollFds[index].events = POLLOUT;
-
+	_pollFds[index].events = POLLOUT; // Switch the poll events for the client socket to POLLOUT, indicating that we are now ready to send data back to the client
 	requestBuffer.clear();
 }
 
+// HANDLE CLIENT WRITE
 void Server::handleClientWrite(std::size_t index)
 {
 	int clientFd = _pollFds[index].fd;
@@ -661,8 +453,14 @@ void Server::handleClientWrite(std::size_t index)
 
 	if (response.empty())
 	{
-		removeClient(index);
-		return;
+		if (_clientKeepAlive[clientFd])
+		{
+			_pollFds[index].events = POLLIN;
+		}
+		else
+		{
+			removeClient(index);
+		}
 	}
 
 	ssize_t bytesSent = send(
@@ -684,13 +482,22 @@ void Server::handleClientWrite(std::size_t index)
 	}
 
 	response.erase(0, bytesSent);
-
+	/*
+		If the entire response has been sent, we switch back to monitoring for incoming data (POLLIN) on the client socket
+		so that clients can send additional requests without needing to reconnect.
+		This allows for persistent connections, which is a key feature of HTTP/1.1.
+	*/
 	if (response.empty())
 	{
 		_pollFds[index].events = POLLIN;
 	}
 }
 
+/*
+REMOVE CLIENT for "resource lifecycle" management: Close the client socket, remove it from the poll list,
+and clean up associated buffers and server configuration mappings.
+Acquire -> Use -> Release
+*/ 
 void Server::removeClient(std::size_t index)
 {
 	int clientFd = _pollFds[index].fd;
@@ -702,165 +509,8 @@ void Server::removeClient(std::size_t index)
 
 	_clientBuffers.erase(clientFd);
 	_clientWriteBuffers.erase(clientFd);
+	_clientServers.erase(clientFd);
+	_clientKeepAlive.erase(clientFd);
 
 	_pollFds.erase(_pollFds.begin() + index);
-}
-
-std::string Server::readFile(const std::string &path)
-{
-	int fd = open(path.c_str(), O_RDONLY);
-
-	if (fd == -1)
-		return "";
-
-	std::string content;
-	char buffer[4096];
-
-	ssize_t bytesRead;
-
-	while ((bytesRead = read(fd, buffer, sizeof(buffer))) > 0)
-		content.append(buffer, bytesRead);
-
-	close(fd);
-
-	return content;
-}
-
-bool Server::fileExists(const std::string &path)
-{
-	struct stat fileStat;
-
-	if (stat(path.c_str(), &fileStat) == -1)
-		return false;
-
-	return S_ISREG(fileStat.st_mode);
-}
-
-std::string Server::getContentType(const std::string &path)
-{
-	std::size_t dot = path.find_last_of('.');
-
-	if (dot == std::string::npos)
-		return "application/octet-stream";
-
-	std::string extension = path.substr(dot);
-
-	if (extension == ".html" || extension == ".htm")
-		return "text/html";
-
-	if (extension == ".css")
-		return "text/css";
-
-	if (extension == ".js")
-		return "application/javascript";
-
-	if (extension == ".txt")
-		return "text/plain";
-
-	if (extension == ".json")
-		return "application/json";
-
-	if (extension == ".png")
-		return "image/png";
-
-	if (extension == ".jpg" || extension == ".jpeg")
-		return "image/jpeg";
-
-	if (extension == ".gif")
-		return "image/gif";
-
-	if (extension == ".svg")
-		return "image/svg+xml";
-
-	return "application/octet-stream";
-}
-
-bool Server::isDirectory(const std::string &path)
-{
-	struct stat fileStat;
-
-	if (stat(path.c_str(), &fileStat) == -1)
-		return false;
-
-	return S_ISDIR(fileStat.st_mode);
-}
-
-std::string Server::generateDirectoryListing(
-	const std::string &path,
-	const std::string &url
-)
-{
-	DIR *dir = opendir(path.c_str());
-
-	if (dir == NULL)
-		return "";
-
-	std::string body;
-
-	body += "<!DOCTYPE html>\n";
-	body += "<html>\n";
-	body += "<head><title>Index of " + url + "</title></head>\n";
-	body += "<body>\n";
-	body += "<h1>Index of " + url + "</h1>\n";
-	body += "<ul>\n";
-
-	struct dirent *entry;
-
-	while ((entry = readdir(dir)) != NULL)
-	{
-		std::string name = entry->d_name;
-
-		if (name == "." || name == "..")
-			continue;
-
-		body += "<li><a href=\"";
-		body += url;
-
-		if (url[url.size() - 1] != '/')
-			body += "/";
-
-		body += name;
-		body += "\">";
-		body += name;
-		body += "</a></li>\n";
-	}
-
-	closedir(dir);
-
-	body += "</ul>\n";
-	body += "</body>\n";
-	body += "</html>\n";
-
-	return body;
-}
-
-void Server::setErrorResponse(
-        const ServerConfig &serverConfig,
-        HttpResponse &response,
-        int statusCode,
-        const std::string &statusText,
-        const std::string &defaultBody
-)
-{
-    const std::string *errorPage =
-        serverConfig.getErrorPage(statusCode);
-
-    if (errorPage != NULL)
-    {
-        std::string path = serverConfig.getRoot() + *errorPage;
-
-        if (fileExists(path))
-        {
-            std::string body = readFile(path);
-
-            response.setStatus(statusCode, statusText);
-            response.setBody(body);
-            response.setContentType(getContentType(path));
-            return;
-        }
-    }
-
-    response.setStatus(statusCode, statusText);
-    response.setBody(defaultBody);
-    response.setContentType("text/plain");
 }
