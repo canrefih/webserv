@@ -14,7 +14,8 @@ SRCS = src/main.cpp \
        src/RequestHandler.cpp \
        src/Signal.cpp \
        src/CGIHandler.cpp \
-       src/CGIEnvBuilder.cpp
+       src/CGIEnvBuilder.cpp \
+       src/URL.cpp
 
 TESTS_SRCS = tests/test_config_parsing.cpp\
 		tests/test_http_request.cpp\
@@ -26,7 +27,8 @@ TESTS_SRCS = tests/test_config_parsing.cpp\
 		tests/test_keep_alive.cpp\
 		tests/test_multi_socket.cpp\
 		tests/test_signal_handling.cpp\
-		tests/test_timeout_protection.cpp
+		tests/test_timeout_protection.cpp\
+		tests/test_url.cpp
 
 OBJS = $(SRCS:src/%.cpp=obj/%.o)
 TESTS = $(TESTS_SRCS:tests/%.cpp=tests/bin/%.out)
@@ -43,6 +45,8 @@ debug:
 
 $(NAME): $(OBJS)
 	$(CXX) $(CXXFLAGS) $(OBJS) -o $(NAME)
+
+tests: $(TESTS_OBJS) $(TESTS)
 
 obj/%.o: src/%.cpp
 	@mkdir -p $(dir $@)
@@ -67,4 +71,4 @@ fclean: clean
 
 re: fclean all
 
-.PHONY: all clean fclean re test_cgi
+.PHONY: all clean fclean re test_cgi tests
