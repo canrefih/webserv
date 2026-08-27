@@ -3,6 +3,7 @@
 
 #include <string>
 #include <vector>
+#include <map>
 
 /*
 Location class represents a specific location block in the server configuration.
@@ -20,6 +21,8 @@ class Location
         bool                     _upload;
         std::string              _uploadStore;
         std::vector<std::string> _allowedMethods;
+		std::map<std::string, std::string> _cgiExtensions;
+
 
     public:
         Location();
@@ -33,6 +36,12 @@ class Location
         void setUpload(bool value);
         void setUploadStore(const std::string &path);
         void addMethod(const std::string &method);
+
+		/*CGI*/
+		void addCgiExtension(const std::string &extension, const std::string &interpreterPath);
+		bool isCgiExtension(const std::string &extension) const;
+		const std::string &getCgiInterpreter(const std::string &extension) const;
+		/*end*/
 
         const std::string &getPath() const;
         const std::string &getRoot() const;

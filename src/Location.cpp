@@ -107,3 +107,27 @@ bool Location::isMethodAllowed(const std::string &method) const // Check if a sp
 
     return false;
 }
+
+void Location::addCgiExtension(const std::string &extension, const std::string &interpreterPath)
+{
+	_cgiExtensions[extension] = interpreterPath;
+}
+
+bool Location::isCgiExtension(const std::string &extension) const
+{
+
+	if (_cgiExtensions.find(extension) == _cgiExtensions.end())
+		return (false);
+	else
+		return (true);
+}
+
+const std::string &Location::getCgiInterpreter (const std::string &extension) const
+{
+	static const std::string empty("");
+	std::map<std::string, std::string>::const_iterator it = _cgiExtensions.find(extension);
+
+	if (it == _cgiExtensions.end())
+		return (empty);
+	return (it->second);
+}

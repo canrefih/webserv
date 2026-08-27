@@ -71,7 +71,7 @@ The table below shows which tasks depend on someone else's work and which don't.
 
 | Task | Dependency |
 |---|---|
-| CGI engine (fork/execve/pipe/dup2, env variables, EOF/Content-Length handling) | None |
+| CGI engine (fork/execve/pipe/dup2, env variables, EOF/Content-Length handling) | Done |
 | Add `redirect` field to `Location` | None |
 | Add `cgi_extension` mapping to `Location` | None |
 | Make upload support multipart/form-data | None |
