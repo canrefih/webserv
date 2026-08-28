@@ -107,7 +107,7 @@ bool Config::parse(const std::string &filename)
             return false;
         }
 
-        if (directive == "listen")
+        if (directive == "listen") // Handle the "listen" directive, which specifies the host and port for the server to listen on. This directive must be inside a server block and not inside a location block.
         {
             if (currentLocation != NULL)
             {
@@ -136,7 +136,7 @@ bool Config::parse(const std::string &filename)
             currentServer->setHost(host);
             currentServer->setPort(port);
         }
-        else if (directive == "root")
+        else if (directive == "root") // Handle the "root" directive, which specifies the root directory for serving files. This directive can be inside a server or location block.
         {
             iss >> value;
 
@@ -148,7 +148,7 @@ bool Config::parse(const std::string &filename)
             else
                 currentServer->setRoot(value);
         }
-        else if (directive == "index")
+        else if (directive == "index") // Handle the "index" directive, which specifies the default file to serve when a directory is requested. This directive must be inside a server or location block.
         {
             iss >> value;
 
@@ -160,7 +160,7 @@ bool Config::parse(const std::string &filename)
             else
                 currentServer->setIndex(value);
         }
-        else if (directive == "autoindex")
+        else if (directive == "autoindex") // Handle the "autoindex" directive, which specifies whether to display a list of files in a directory. This directive must be inside a server or location block.
         {
             iss >> value;
 
@@ -188,7 +188,7 @@ bool Config::parse(const std::string &filename)
                 return false;
             }
         }
-        else if (directive == "client_max_body_size")
+        else if (directive == "client_max_body_size") // Handle the "client_max_body_size" directive, which specifies the maximum allowed size of the request body for a server. This directive must be inside a server block and not inside a location block.
         {
             if (currentLocation != NULL)
             {
@@ -224,7 +224,7 @@ bool Config::parse(const std::string &filename)
             currentServer->setClientMaxBodySize(
                 std::atoi(value.c_str()) * multiplier);
         }
-        else if (directive == "error_page")
+        else if (directive == "error_page") // Handle the "error_page" directive, which specifies a custom error page for a specific HTTP status code. This directive must be inside a server block and not inside a location block.
         {
             if (currentLocation != NULL)
             {
@@ -266,7 +266,7 @@ bool Config::parse(const std::string &filename)
 
             currentServer->setErrorPage(statusCode, path);
         }
-        else if (directive == "allow_methods")
+        else if (directive == "allow_methods") // Handle the "allow_methods" directive, which specifies the allowed HTTP methods (e.g., GET, POST, DELETE) for a specific location. This directive must be inside a location block.
         {
             if (currentLocation == NULL)
             {
@@ -285,7 +285,7 @@ bool Config::parse(const std::string &filename)
                     currentLocation->addMethod(value);
             }
         }
-        else if (directive == "upload")
+        else if (directive == "upload") // Handle the "upload" directive, which specifies whether file uploads are allowed for a specific location. This directive must be inside a location block.
         {
             if (currentLocation == NULL)
             {
@@ -358,6 +358,7 @@ const std::vector<ServerConfig> &Config::getServers() const
     return _servers;
 }
 
+// Retrieve a server configuration by its listening port. If no server is found for the specified port, return NULL.
 const ServerConfig *Config::getServerByPort(int port) const
 {
     std::vector<ServerConfig>::const_iterator it;

@@ -1,6 +1,6 @@
 #include "ServerConfig.hpp"
 
-ServerConfig::ServerConfig()
+ServerConfig::ServerConfig() // Constructor with default values
     : _host("127.0.0.1"),
       _port(8080),
       _root("./www"),
@@ -59,6 +59,7 @@ const std::vector<Location> &ServerConfig::getLocations() const
     return _locations;
 }
 
+// Find the best matching location for a given path
 const Location *ServerConfig::findLocation(const std::string &path) const
 {
     const Location *bestMatch = NULL;
@@ -70,10 +71,10 @@ const Location *ServerConfig::findLocation(const std::string &path) const
     {
         const std::string &locationPath = it->getPath();
 
-        if (path.compare(0, locationPath.size(), locationPath) != 0)
+        if (path.compare(0, locationPath.size(), locationPath) != 0) // Not a prefix match
             continue;
 
-        if (path.size() == locationPath.size())
+        if (path.size() == locationPath.size()) // Exact match
         {
             if (locationPath.size() > bestLength)
             {
@@ -81,7 +82,7 @@ const Location *ServerConfig::findLocation(const std::string &path) const
                 bestLength = locationPath.size();
             }
         }
-        else if (locationPath == "/" || path[locationPath.size()] == '/')
+        else if (locationPath == "/" || path[locationPath.size()] == '/') // Ensure that the match is a directory prefix
         {
             if (locationPath.size() > bestLength)
             {
@@ -134,12 +135,12 @@ void ServerConfig::addLocation(const Location &location)
 	_locations.push_back(location);
 }
 
-void ServerConfig::setErrorPage(int statusCode, const std::string &path)
+void ServerConfig::setErrorPage(int statusCode, const std::string &path) // Set a custom error page for a specific HTTP status code
 {
     _errorPages[statusCode] = path;
 }
 
-const std::string *ServerConfig::getErrorPage(int statusCode) const
+const std::string *ServerConfig::getErrorPage(int statusCode) const // Retrieve the custom error page for a specific HTTP status code, if set
 {
     std::map<int, std::string>::const_iterator it =
         _errorPages.find(statusCode);

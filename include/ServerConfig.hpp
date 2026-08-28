@@ -6,6 +6,14 @@
 #include <map>
 #include "Location.hpp"
 
+/*
+ServerConfig class holds the configuration for a server instance,
+including host, port, root directory, index file, autoindex setting,
+upload settings, and client max body size per server.
+It also manages a collection of Location objects
+representing different location blocks within the server configuration.
+*/
+
 class ServerConfig
 {
 	private:

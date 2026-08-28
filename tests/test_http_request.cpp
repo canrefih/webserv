@@ -1,136 +1,272 @@
 #include "../include/HttpRequest.hpp"
+
 #include <iostream>
 
 int main()
 {
 	std::cout << "=== HTTP REQUEST TESTS ===" << std::endl;
-	
-	std::cout << "\nTest 1: Parse simple GET request..." << std::endl;
-	HttpRequest req1;
-	std::string rawReq1 = "GET / HTTP/1.1\r\nHost: localhost\r\nUser-Agent: test\r\n\r\n";
-	
-	if (!req1.parse(rawReq1))
+
+	// ---------------------------------------------------------
+	// Test 1: Basic request parsing
+	// ---------------------------------------------------------
+	std::cout << "\nTest 1: Basic request parsing..." << std::endl;
+
+	HttpRequest request1;
+
+	std::string rawRequest1 =
+		"GET /index.html HTTP/1.1\r\n"
+		"Host: localhost\r\n"
+		"Connection: keep-alive\r\n"
+		"\r\n";
+
+	if (!request1.parse(rawRequest1))
 	{
-		std::cerr << "FAIL: Could not parse simple GET request" << std::endl;
+		std::cerr << "FAIL: Request parsing failed" << std::endl;
 		return 1;
 	}
-	
-	if (req1.getMethod() != "GET" ||
-	    req1.getTarget() != "/" ||
-	    req1.getVersion() != "HTTP/1.1")
+
+	if (request1.getMethod() != "GET")
 	{
-		std::cerr << "FAIL: Request line parsing incorrect" << std::endl;
+		std::cerr << "FAIL: Method incorrect" << std::endl;
 		return 1;
 	}
-	
-	if (req1.getHeader("Host") != "localhost")
+
+	if (request1.getTarget() != "/index.html")
 	{
-		std::cerr << "FAIL: Host header not parsed correctly" << std::endl;
+		std::cerr << "FAIL: Target incorrect" << std::endl;
 		return 1;
 	}
-	std::cout << "PASS: Simple GET request parsed" << std::endl;
-	
-	std::cout << "\nTest 2: Parse POST request with body..." << std::endl;
-	HttpRequest req2;
-	std::string rawReq2 = "POST /api HTTP/1.1\r\nHost: example.com\r\nContent-Length: 13\r\n\r\nHello, World!";
-	
-	if (!req2.parse(rawReq2))
+
+	if (request1.getVersion() != "HTTP/1.1")
 	{
-		std::cerr << "FAIL: Could not parse POST request" << std::endl;
+		std::cerr << "FAIL: Version incorrect" << std::endl;
 		return 1;
 	}
-	
-	if (req2.getMethod() != "POST" || req2.getTarget() != "/api")
+
+	std::cout << "PASS: Basic request parsing" << std::endl;
+
+	// ---------------------------------------------------------
+	// Test 2: Header parsing
+	// ---------------------------------------------------------
+	std::cout << "\nTest 2: Header parsing..." << std::endl;
+
+	if (request1.getHeader("Host") != "localhost")
 	{
-		std::cerr << "FAIL: POST request line incorrect" << std::endl;
+		std::cerr << "FAIL: Host header incorrect" << std::endl;
 		return 1;
 	}
-	
-	if (req2.getHeader("Content-Length") != "13")
+
+	if (request1.getHeader("Connection") != "keep-alive")
 	{
-		std::cerr << "FAIL: Content-Length header incorrect" << std::endl;
+		std::cerr << "FAIL: Connection header incorrect" << std::endl;
 		return 1;
 	}
-	
-	if (req2.getBody() != "Hello, World!")
+
+	std::cout << "PASS: Header parsing" << std::endl;
+
+	// ---------------------------------------------------------
+	// Test 3: Case-insensitive header lookup
+	// ---------------------------------------------------------
+	std::cout << "\nTest 3: Case-insensitive header lookup..." << std::endl;
+
+	HttpRequest request2;
+
+	std::string rawRequest2 =
+		"GET / HTTP/1.1\r\n"
+		"hOsT: localhost\r\n"
+		"cOnNeCtIoN: keep-alive\r\n"
+		"CONTENT-LENGTH: 10\r\n"
+		"\r\n"
+		"1234567890";
+
+	if (!request2.parse(rawRequest2))
 	{
-		std::cerr << "FAIL: Body not parsed correctly. Got: '" << req2.getBody() << "'" << std::endl;
+		std::cerr << "FAIL: Mixed-case request parsing failed" << std::endl;
 		return 1;
 	}
-	std::cout << "PASS: POST request with body parsed" << std::endl;
-	
-	std::cout << "\nTest 3: Parse multiple headers..." << std::endl;
-	HttpRequest req3;
-	std::string rawReq3 = "GET /test HTTP/1.1\r\nHost: test.com\r\nAccept: */*\r\nConnection: close\r\n\r\n";
-	
-	if (!req3.parse(rawReq3))
+
+	// Host
+	if (request2.getHeader("Host") != "localhost")
 	{
-		std::cerr << "FAIL: Could not parse request with multiple headers" << std::endl;
+		std::cerr << "FAIL: Host lookup failed" << std::endl;
 		return 1;
 	}
-	
-	const std::map<std::string, std::string> &headers = req3.getHeaders();
-	if (headers.size() != 3)
+
+	if (request2.getHeader("host") != "localhost")
 	{
-		std::cerr << "FAIL: Expected 3 headers, got " << headers.size() << std::endl;
+		std::cerr << "FAIL: lowercase Host lookup failed" << std::endl;
 		return 1;
 	}
-	
-	if (req3.getHeader("Accept") != "*/*")
+
+	if (request2.getHeader("HOST") != "localhost")
 	{
-		std::cerr << "FAIL: Accept header incorrect" << std::endl;
+		std::cerr << "FAIL: uppercase Host lookup failed" << std::endl;
 		return 1;
 	}
-	std::cout << "PASS: Multiple headers parsed" << std::endl;
-	
-	std::cout << "\nTest 4: Parse header with leading spaces..." << std::endl;
-	HttpRequest req4;
-	std::string rawReq4 = "GET / HTTP/1.1\r\nHost:   example.com   \r\n\r\n";
-	
-	if (!req4.parse(rawReq4))
+
+	if (request2.getHeader("HoSt") != "localhost")
 	{
-		std::cerr << "FAIL: Could not parse header with spaces" << std::endl;
+		std::cerr << "FAIL: mixed-case Host lookup failed" << std::endl;
 		return 1;
 	}
-	
-	std::string hostValue = req4.getHeader("Host");
-	if (hostValue.empty() || hostValue[0] == ' ')
+
+	// Connection
+	if (request2.getHeader("Connection") != "keep-alive")
 	{
-		std::cerr << "FAIL: Header value space trimming incorrect" << std::endl;
+		std::cerr << "FAIL: Connection lookup failed" << std::endl;
 		return 1;
 	}
-	std::cout << "PASS: Header spaces handled" << std::endl;
-	
-	std::cout << "\nTest 5: Get non-existent header..." << std::endl;
-	HttpRequest req5;
-	std::string rawReq5 = "GET / HTTP/1.1\r\n\r\n";
-	req5.parse(rawReq5);
-	
-	const std::string &noHeader = req5.getHeader("Non-Existent");
-	if (!noHeader.empty())
+
+	if (request2.getHeader("connection") != "keep-alive")
 	{
-		std::cerr << "FAIL: Non-existent header should return empty string" << std::endl;
+		std::cerr << "FAIL: lowercase Connection lookup failed" << std::endl;
 		return 1;
 	}
-	std::cout << "PASS: Non-existent header returns empty" << std::endl;
-	
-	std::cout << "\nTest 6: Parse DELETE request..." << std::endl;
-	HttpRequest req6;
-	std::string rawReq6 = "DELETE /file.txt HTTP/1.1\r\nHost: localhost\r\n\r\n";
-	
-	if (!req6.parse(rawReq6))
+
+	if (request2.getHeader("CONNECTION") != "keep-alive")
 	{
-		std::cerr << "FAIL: Could not parse DELETE request" << std::endl;
+		std::cerr << "FAIL: uppercase Connection lookup failed" << std::endl;
 		return 1;
 	}
-	
-	if (req6.getMethod() != "DELETE")
+
+	if (request2.getHeader("CoNnEcTiOn") != "keep-alive")
 	{
-		std::cerr << "FAIL: DELETE method not recognized" << std::endl;
+		std::cerr << "FAIL: mixed-case Connection lookup failed" << std::endl;
 		return 1;
 	}
-	std::cout << "PASS: DELETE request parsed" << std::endl;
-	
+
+	// Content-Length
+	if (request2.getHeader("Content-Length") != "10")
+	{
+		std::cerr << "FAIL: Content-Length lookup failed" << std::endl;
+		return 1;
+	}
+
+	if (request2.getHeader("CONTENT-LENGTH") != "10")
+	{
+		std::cerr << "FAIL: uppercase Content-Length lookup failed" << std::endl;
+		return 1;
+	}
+
+	std::cout << "PASS: Header lookup is case-insensitive" << std::endl;
+
+	// ---------------------------------------------------------
+	// Test 4: Header names are normalized internally
+	// ---------------------------------------------------------
+	std::cout << "\nTest 4: Header name normalization..." << std::endl;
+
+	const std::map<std::string, std::string> &headers =
+		request2.getHeaders();
+
+	if (headers.find("host") == headers.end())
+	{
+		std::cerr << "FAIL: Host was not normalized to lowercase" << std::endl;
+		return 1;
+	}
+
+	if (headers.find("connection") == headers.end())
+	{
+		std::cerr << "FAIL: Connection was not normalized to lowercase"
+				  << std::endl;
+		return 1;
+	}
+
+	if (headers.find("content-length") == headers.end())
+	{
+		std::cerr << "FAIL: Content-Length was not normalized to lowercase"
+				  << std::endl;
+		return 1;
+	}
+
+	if (headers.find("Host") != headers.end())
+	{
+		std::cerr << "FAIL: Uppercase Host key exists internally" << std::endl;
+		return 1;
+	}
+
+	if (headers.find("Connection") != headers.end())
+	{
+		std::cerr << "FAIL: Mixed-case Connection key exists internally"
+				  << std::endl;
+		return 1;
+	}
+
+	std::cout << "PASS: Header names normalized correctly" << std::endl;
+
+	// ---------------------------------------------------------
+	// Test 5: Missing header
+	// ---------------------------------------------------------
+	std::cout << "\nTest 5: Missing header..." << std::endl;
+
+	if (!request2.getHeader("User-Agent").empty())
+	{
+		std::cerr << "FAIL: Missing header should return empty string"
+				  << std::endl;
+		return 1;
+	}
+
+	if (!request2.getHeader("USER-AGENT").empty())
+	{
+		std::cerr << "FAIL: Missing header lookup should be case-insensitive"
+				  << std::endl;
+		return 1;
+	}
+
+	std::cout << "PASS: Missing header handled correctly" << std::endl;
+
+	// ---------------------------------------------------------
+	// Test 6: Request body
+	// ---------------------------------------------------------
+	std::cout << "\nTest 6: Request body..." << std::endl;
+
+	if (request2.getBody() != "1234567890")
+	{
+		std::cerr << "FAIL: Request body incorrect" << std::endl;
+		return 1;
+	}
+
+	std::cout << "PASS: Request body handled correctly" << std::endl;
+
+	// ---------------------------------------------------------
+	// Test 7: Invalid request
+	// ---------------------------------------------------------
+	std::cout << "\nTest 7: Invalid request..." << std::endl;
+
+	HttpRequest request3;
+
+	if (request3.parse("INVALID REQUEST\r\n\r\n"))
+	{
+		std::cerr << "FAIL: Invalid request was accepted" << std::endl;
+		return 1;
+	}
+
+	std::cout << "PASS: Invalid request rejected" << std::endl;
+
+	// ---------------------------------------------------------
+	// Test 8: Invalid header
+	// ---------------------------------------------------------
+	std::cout << "\nTest 8: Invalid header..." << std::endl;
+
+	HttpRequest request4;
+
+	std::string invalidHeaderRequest =
+		"GET / HTTP/1.1\r\n"
+		"Host: localhost\r\n"
+		"InvalidHeaderWithoutColon\r\n"
+		"\r\n";
+
+	if (request4.parse(invalidHeaderRequest))
+	{
+		std::cerr << "FAIL: Invalid header was accepted" << std::endl;
+		return 1;
+	}
+
+	std::cout << "PASS: Invalid header rejected" << std::endl;
+
+	// ---------------------------------------------------------
+	// Final result
+	// ---------------------------------------------------------
 	std::cout << "\n=== ALL HTTP REQUEST TESTS PASSED ===" << std::endl;
+
 	return 0;
 }

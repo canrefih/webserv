@@ -2,7 +2,7 @@
 
 #include <sstream>
 
-HttpResponse::HttpResponse()
+HttpResponse::HttpResponse() // Constructor with default values
 	: _statusCode(200),
 	  _statusText("OK"),
 	  _contentType("text/plain")
@@ -13,7 +13,7 @@ HttpResponse::~HttpResponse()
 {
 }
 
-void HttpResponse::setStatus(int code, const std::string &text)
+void HttpResponse::setStatus(int code, const std::string &text) // Set the HTTP status code and corresponding status text (e.g., 200 OK, 404 Not Found)
 {
 	_statusCode = code;
 	_statusText = text;
@@ -29,7 +29,8 @@ void HttpResponse::setContentType(const std::string &contentType)
 	_contentType = contentType;
 }
 
-std::string HttpResponse::toString() const
+// Convert the HTTP response object into a raw HTTP response string, including the status line, headers, and body, ready to be sent over the network
+std::string HttpResponse::toString() const 
 {
 	std::ostringstream response;
 
@@ -52,13 +53,13 @@ std::string HttpResponse::toString() const
 		response << it->first << ": " << it->second << "\r\n";
 	}
 
-	response << "Connection: close\r\n";
 	response << "\r\n";
 	response << _body;
 
 	return response.str();
 }
 
+// Set a custom header for the HTTP response, allowing the addition of any header not covered by the other methods (e.g., X-Custom-Header)
 void HttpResponse::setHeader(const std::string &name, const std::string &value)
 {
     _customHeaders[name] = value;

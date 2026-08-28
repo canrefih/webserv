@@ -1,13 +1,13 @@
 #include "Location.hpp"
 
-Location::Location()
+Location::Location() // Default constructor
     : _autoindex(false),
       _autoindexSet(false),
       _upload(false)
 {
 }
 
-Location::Location(const std::string &path)
+Location::Location(const std::string &path) // Constructor with a specified path
     : _path(path),
       _autoindex(false),
       _autoindexSet(false),
@@ -90,7 +90,7 @@ const std::string &Location::getUploadStore() const
     return _uploadStore;
 }
 
-bool Location::isMethodAllowed(const std::string &method) const
+bool Location::isMethodAllowed(const std::string &method) const // Check if a specific HTTP method is allowed for this location
 {
     if (_allowedMethods.empty())
         return true;

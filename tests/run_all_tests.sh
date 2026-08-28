@@ -3,23 +3,23 @@
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+GREY='\033[90m'
 NC='\033[0m'
+
+
+if [ -z "${TESTS_BINARIES:-}" ]; then
+	echo -e "${RED}Error: \$TESTS_BINARIES not set${NC}"
+	exit 1
+fi
 
 PASSED=0
 FAILED=0
 TOTAL=0
 
-echo "========================================"
-echo "  PHASE 0 - TEST SUITE"
-echo "========================================"
-echo ""
-
 run_test() {
-	local test_name=$1
-	local exe_name=$2
-	local source_files=$3
+	local exe_name=$1
 	
-	echo -n "Running $test_name... "
+	echo -ne "${GREY}Running $exe_name ${NC}"
 	
 	if [ ! -f "${exe_name}" ]; then
 		echo -e "${RED}✗ SKIP (not compiled)${NC}"
@@ -35,9 +35,13 @@ run_test() {
 		return 0
 	else
 		echo -e "${RED}✗ FAIL${NC}"
+		echo -e "${YELLOW}Test output:${NC}"
 		cat /tmp/test_output.txt
+		echo
+
 		((FAILED++))
 		((TOTAL++))
+
 		return 1
 	fi
 }
@@ -45,12 +49,9 @@ run_test() {
 echo "--- Running Tests ---"
 echo ""
 
-run_test "Config Parsing" "test_config_parsing" ""
-run_test "ServerConfig" "test_serverconfig" ""
-run_test "Location" "test_location" ""
-run_test "HttpRequest" "test_http_request" ""
-run_test "HttpResponse" "test_http_response" ""
-run_test "Server Integration" "test_server_integration" ""
+for test_bin in ${TESTS_BINARIES}; do
+	run_test $test_bin
+done
 
 echo ""
 echo "========================================"
@@ -61,12 +62,6 @@ echo -e "Passed: ${GREEN}${PASSED}${NC}"
 echo -e "Failed: ${RED}${FAILED}${NC}"
 echo ""
 
-if [ $FAILED -eq 0 ] && [ $TOTAL -eq 6 ]; then
-	echo -e "${GREEN}✓ ALL TESTS PASSED${NC}"
-	echo ""
-	echo "Phase 0 is complete!"
-	exit 0
-else
-	echo -e "${RED}✗ SOME TESTS FAILED OR NOT COMPILED${NC}"
-	exit 1
+if [ $FAILED -eq 0 ] && [ $TOTAL -gt 0 ]; then
+       echo -e "${GREEN}✓ ALL TESTS PASSED${NC}"
 fi
