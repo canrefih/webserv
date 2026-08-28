@@ -10,13 +10,15 @@ class StringBuilder
 	std::size_t _len;
 	std::size_t _cap;
 
-	// private because any StringBuilder instance is immutable
+	// private because StringBuilder instances are immutable
 	StringBuilder(const StringBuilder& other);
 	StringBuilder& operator=(const StringBuilder& other);
 
 public:
 
-	static const std::size_t min_capacity = 256;
+	enum Constants {
+		MIN_CAPACITY = 256
+	};
 
 	StringBuilder();
 	StringBuilder(std::size_t capacity);
@@ -31,7 +33,6 @@ public:
 		return write(value, N - 1);
 	}
 
-	StringBuilder& operator<<(int value);
 	StringBuilder& operator<<(unsigned long value);
 	StringBuilder& operator<<(long long value);
 	StringBuilder& operator<<(char value);
