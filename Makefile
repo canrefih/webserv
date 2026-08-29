@@ -4,7 +4,13 @@ CXX = c++
 CXXFLAGS = -Wall -Wextra -Werror -std=c++98
 CPPFLAGS = -Iinclude
 
-SRCS = src/main.cpp \
+LIB_SRCS = src/lib/StringBuilder.cpp \
+			src/lib/Profiler.cpp \
+			src/lib/StringView.cpp \
+			src/lib/HashMap.cpp \
+
+SRCS = $(LIB_SRCS) \
+	   src/main.cpp \
        src/Config.cpp \
        src/Server.cpp \
        src/ServerConfig.cpp \
@@ -26,7 +32,8 @@ TESTS_SRCS = tests/test_config_parsing.cpp\
 		tests/test_keep_alive.cpp\
 		tests/test_multi_socket.cpp\
 		tests/test_signal_handling.cpp\
-		tests/test_timeout_protection.cpp
+		tests/test_timeout_protection.cpp\
+		tests/test_lib.cpp
 
 OBJS = $(SRCS:src/%.cpp=obj/%.o)
 TESTS = $(TESTS_SRCS:tests/%.cpp=tests/bin/%.out)
@@ -67,4 +74,4 @@ fclean: clean
 
 re: fclean all
 
-.PHONY: all clean fclean re test_cgi
+.PHONY: all clean fclean re test_cgi tests
