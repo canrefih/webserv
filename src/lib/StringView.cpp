@@ -28,6 +28,7 @@ StringView::const_reference StringView::at(StringView::size_type pos) const
 }
 
 StringView::const_pointer StringView::data() const { return _buf; }
+StringView::const_pointer StringView::c_str() const { return _buf; }
 StringView::size_type StringView::size() const { return _len; }
 StringView::size_type StringView::length() const { return _len; }
 StringView::const_reference StringView::back() const { return _buf[_len - 1]; }
@@ -50,6 +51,11 @@ void StringView::remove_suffix(StringView::size_type n)
 	if (n > _len)
 		n = _len;
 	_len -= n;
+}
+
+void StringView::destroy()
+{
+	delete[] _buf;
 }
 
 StringView StringView::substr(StringView::size_type pos, StringView::size_type count) const

@@ -1,5 +1,6 @@
 #ifndef STRING_VIEW_HPP
 #define STRING_VIEW_HPP
+
 #include <cstddef>
 #include <string>
 #include <ostream>
@@ -36,6 +37,7 @@ public:
 	const_reference operator[](size_type pos) const;
 	const_reference at(size_type pos) const;
 	const_pointer data() const;
+	const_pointer c_str() const;
 	const_reference front() const;
 	const_reference back() const;
 	size_type size() const;
@@ -47,6 +49,8 @@ public:
 
 	void remove_prefix(size_type n);
 	void remove_suffix(size_type n);
+
+	void destroy(); // if user knows that the instance owns the _buf memory
 
 	StringView substr(size_type pos = 0, size_type count = npos) const;
 
