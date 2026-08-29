@@ -1,6 +1,6 @@
 #ifndef PROFILER_HPP
 #define PROFILER_HPP
-#include <cctime>
+#include <ctime>
 
 class Profiler
 {
@@ -13,7 +13,7 @@ class Profiler
 
 public:
 	Profiler(const char *name);
-	~Profiler()
+	~Profiler();
 };
 
 #endif // PROFILER_HPP
