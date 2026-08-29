@@ -1,17 +1,25 @@
 #include "lib/StringBuilder.hpp"
 
+#include <cstring>
+#include <sys/types.h>
+
+//	char		*_buf;
+//	std::size_t _len;
+//	std::size_t _cap;
+
 StringBuilder::StringBuilder() : _buf(NULL), _len(0), _cap(0) {}
-StringBuilder::~StringBuilder() { delete _buf; }
+StringBuilder::~StringBuilder() { delete[] _buf; }
 StringBuilder::StringBuilder(std::size_t capacity)
-	: _len(0), _cap(capacity), _buf(new char[capacity]) {}
+	: _buf(new char[capacity]), _len(0), _cap(capacity) {}
 StringBuilder::StringBuilder(const StringBuilder& other) { (void)other; }
 StringBuilder& StringBuilder::operator=(const StringBuilder& other) { (void)other; return *this; }
 
-char		*StringBuilder::data() { return _buf }
-char		*StringBuilder::c_str() { return _buf; }
-std::size_t StringBuilder::capacity() { return _cap; }
-std::size_t StringBuilder::length() { return _len; }
-std::size_t StringBuilder::size() { return _len; }
+char		*StringBuilder::data() const { return _buf; }
+char		*StringBuilder::c_str() const { return _buf; }
+std::size_t StringBuilder::capacity() const { return _cap; }
+std::size_t StringBuilder::length() const { return _len; }
+std::size_t StringBuilder::size() const { return _len; }
+std::string	StringBuilder::str() const { return std::string(_buf, _len); }
 
 void StringBuilder::clear()
 {
@@ -23,24 +31,26 @@ void StringBuilder::clear()
 StringView StringBuilder::release()
 {
 	StringView res(_buf, _len); 
-	_buf = _len = _cap = 0;
+	_buf = NULL ;
+	_len = _cap = 0;
 	return res;
 }
 
-void reserve(std::size_t count)
+
+void StringBuilder::reserve(std::size_t count)
 {
 	if (count >= _cap)
-		_realloc(count);
+		_resize(count);
 }
 
-void	StringBuilder::_realloc(std::size_t target_len)
+void	StringBuilder::_resize(std::size_t target_len)
 {
-	char		*new_buf;
-	size_t		new_cap = 0;
+	char	*new_buf;
+	size_t	new_cap = 0;
 
 	target_len += 1; // null terminator
 	if (_cap == 0)
-		new_cap = StringBuilder::MIN_CAPACITY;
+		new_cap = STRING_BUILDER_DEFAULT_CAPACITY;
 	else
 		new_cap = _cap;
 	while (new_cap < target_len)
@@ -49,49 +59,50 @@ void	StringBuilder::_realloc(std::size_t target_len)
 	new_buf = new char[new_cap];
 	std::memcpy(new_buf, _buf, _len);
 	new_buf[_len] = '\0';
-	delete _buf;
+	delete[] _buf;
 	_cap = new_cap;
 	_buf = new_buf;
 }
 
-StringBuilder& write(const char *s, std::size_t count)
+StringBuilder& StringBuilder::write(const char *s, std::size_t count)
 {
 	const std::size_t target_len = _len + count;
 
 	if (target_len >= _cap)
-		_realloc(target_len);
+		_resize(target_len);
 	std::memcpy(_buf + _len, s, count);
 	_len += count;
 	_buf[_len] = '\0';
 	return *this;
 }
 
-StringBuilder& put(char ch);
+StringBuilder& StringBuilder::put(char ch)
 {
 	const std::size_t target_len = _len + 1;
 
 	if (target_len >= _cap)
-		_realloc(target_len);
-	dst->buf[_len] = ch;
-	dst->buf[target_len] = '\0';
-	dst->len = target_len;
+		_resize(target_len);
+	_buf[_len] = ch;
+	_buf[target_len] = '\0';
+	_len = target_len;
 	return *this;
 }
 
-StringBuilder& StringBuilder::operator<<(char value) { this->put(value); }
+StringBuilder& StringBuilder::operator<<(char value) { return this->put(value); }
+
 StringBuilder& StringBuilder::operator<<(char *value)
 {
-	this->write(value, std::strlen(value));
+	return this->write(value, std::strlen(value));
 }
 
 StringBuilder& StringBuilder::operator<<(const std::string& value)
 {
-	this->write(value.c_str(), value.length());
+	return this->write(value.c_str(), value.length());
 }
 
 StringBuilder& StringBuilder::operator<<(const StringView& value)
 {
-	this->write(value.c_str(), value.length());
+	return this->write(value.c_str(), value.length());
 }
 
 static inline std::size_t _get_int_len(long long n)
@@ -157,9 +168,10 @@ static inline void _utoa(char *dest, unsigned long n, size_t char_count)
 
 StringBuilder& StringBuilder::operator<<(long long value)
 {
-	const std::size_t number_len = get_int_len(value) + 1; // + 1 for '-'
+	const std::size_t number_len = _get_int_len(value);
 	this->reserve(_len + number_len);
 	_itoa(_buf + _len, value, number_len);
+	_len += number_len;
 	return *this;
 }
 
@@ -168,5 +180,41 @@ StringBuilder& StringBuilder::operator<<(unsigned long value)
 	const std::size_t number_len = _get_uint_len(value);
 	this->reserve(_len + number_len);
 	_utoa(_buf + _len, value, number_len);
+	_len += number_len;
 	return *this;
+}
+
+StringBuilder& StringBuilder::operator<<(unsigned int value)
+{
+	const std::size_t number_len = _get_uint_len(static_cast<unsigned long>(value));
+	this->reserve(_len + number_len);
+	_utoa(_buf + _len, static_cast<unsigned long>(value), number_len);
+	_len += number_len;
+	return *this;
+}
+
+StringBuilder& StringBuilder::operator<<(int value)
+{
+	const std::size_t number_len = _get_int_len(static_cast<int>(value));
+	this->reserve(_len + number_len);
+	_itoa(_buf + _len, static_cast<int>(value), number_len);
+	_len += number_len;
+	return *this;
+}
+
+StringBuilder& StringBuilder::operator<<(std::ostream& (*manip)(std::ostream&))
+{
+    if (manip == static_cast<std::ostream& (*)(std::ostream&)>(std::endl))
+        return put('\n');
+
+    if (manip == static_cast<std::ostream& (*)(std::ostream&)>(std::flush))
+        return *this;
+
+    return *this;
+}
+
+std::ostream& operator<<(std::ostream& out, const StringBuilder& sb)
+{
+	out.write(sb.data(), static_cast<std::streamsize>(sb.size()));
+	return out;
 }
