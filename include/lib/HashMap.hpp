@@ -6,32 +6,26 @@
 #include <string>
 #include <cstddef>
 #include <cmath>
-#include "StringView.hpp"
+#include <iterator>
 
-template <typename T>
-struct Hash
-{
-	std::size_t operator()(const T& val) const { return static_cast<size_t>(val); }
-};
+#include "HashFn.hpp"
 
 template <typename T>
 struct EqualTo
 {
-	bool operator()(const T& lhs, const T& rhs) const { return lhs == rhs; }
-};
-
-std::size_t djb2(const char *s, const size_t len);
-
-template <>
-struct Hash<StringView>
-{
-	size_t operator()(const StringView& val) const { return djb2(val.c_str(), val.length()); }
+	bool operator()(const T& lhs, const T& rhs) const
+	{
+		return lhs == rhs;
+	}
 };
 
 template <>
 struct Hash<std::string>
 {
-	size_t operator()(const std::string& val) const { return djb2(val.c_str(), val.length()); }
+	size_t operator()(const std::string& val) const
+	{
+		return HashFn::djb2(val.c_str(), val.length());
+	}
 };
 
 #ifndef HMAP_DEFAULT_CAPACITY
@@ -189,7 +183,7 @@ class HashMap
 
 public:
 	template <bool IsConst>
-	class Iterator;
+	struct Iterator;
 
 	typedef std::size_t size_type;
 	typedef std::ptrdiff_t difference_type;
@@ -206,7 +200,8 @@ public:
 		_count(0),
    		_max_load_factor(HMAP_DEFAULT_LOAD_FACTOR) {}
 
-    HashMap(std::size_t capacity) : _count(0),
+
+    explicit HashMap(std::size_t capacity) : _count(0),
    		_max_load_factor(HMAP_DEFAULT_LOAD_FACTOR)
 	{
 		_capacity = (capacity > 0 ? capacity : 1);
@@ -217,7 +212,8 @@ public:
 
     HashMap(const HashMap& other)
 		: _data(NULL), _capacity(other._capacity),
-		_count(other._count), _max_load_factor(other._max_load_factor)
+		_count(other._count), _max_load_factor(other._max_load_factor),
+		_hash(other._hash), _equal(other._equal)
 	{
 		_data = new Slot[_capacity];
 		for (size_type i = 0; i < other._capacity; ++i)
@@ -238,9 +234,10 @@ public:
 		std::swap(_equal, other._equal);
 	}
 
-	HashMap& operator=(HashMap other)
+	HashMap& operator=(const HashMap& other)
 	{
-		swap(other);
+		HashMap tmp(other);
+		swap(tmp);
 		return *this;
 	}
 
@@ -310,8 +307,7 @@ public:
 		if (slot == NULL)
 			return 0;
 		slot->hash = SLOT_DELETED;
-		if (_count)
-			_count--;
+		_count--;
 		return 1;
 	}
 
@@ -328,8 +324,7 @@ public:
 		if (slot == NULL)
 			return next;
 		slot->hash = SLOT_DELETED;
-		if (_count)
-			_count--;
+		_count--;
 		return next;
 	}
 
@@ -373,15 +368,18 @@ public:
 	const_iterator begin() const { return const_iterator(_begin(), _end()); }
 
 	template <bool IsConst>
-	class Iterator
+	struct Iterator
 	{
 		Slot *_pos;
 		Slot *_end;
 
-	public:
-		typedef typename IteratorTraits<IsConst, value_type>::reference val_ref;
-		typedef typename IteratorTraits<IsConst, value_type>::pointer val_ptr;
+		typedef std::forward_iterator_tag iterator_category;
+		typedef typename IteratorTraits<IsConst, value_type>::reference reference;
+		typedef typename IteratorTraits<IsConst, value_type>::pointer pointer;
+		typedef value_type value_type; // boiler plate just for explicit definition
+		typedef std::ptrdiff_t difference_type;
 
+		Iterator() : _pos(NULL), _end(NULL) {}
 		Iterator(Slot *pos, Slot *end) : _pos(pos), _end(end) {}
 
 		template <bool TrueOrFalse>
@@ -390,17 +388,14 @@ public:
 		template <bool TrueOrFalse>
 		Iterator& operator=(const Iterator<TrueOrFalse>& other)
 		{
-			if (this != &other)
-			{
-				_pos = other._pos;
-				_end = other._end;
-			}
+			_pos = other._pos;
+			_end = other._end;
 			return *this;
 		}
 		~Iterator() {}
 
-		val_ref operator*() { return reinterpret_cast<val_ref>(_pos->content); }
-		val_ptr operator->() { return reinterpret_cast<val_ptr>(&_pos->content); }
+		reference operator*() { return reinterpret_cast<reference>(_pos->content); }
+		pointer operator->() { return reinterpret_cast<pointer>(&_pos->content); }
 
 		Iterator& operator++()
 		{

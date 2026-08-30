@@ -1,8 +1,8 @@
 
-#include "lib/HashMap.hpp"
+#include "lib/HashFn.hpp"
 
 // http://www.cse.yorku.ca/~oz/hash.html
-std::size_t djb2(const char *s, const size_t len)
+std::size_t HashFn::djb2(const char *s, const std::size_t len)
 {
 	std::size_t	hash;
 

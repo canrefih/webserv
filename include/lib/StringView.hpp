@@ -5,6 +5,8 @@
 #include <string>
 #include <ostream>
 
+#include "HashFn.hpp"
+
 class StringView
 {
 	const char	*_buf;
@@ -91,5 +93,14 @@ bool operator==(const StringView& lhs, const StringView& rhs);
 bool operator!=(const StringView& lhs, const StringView& rhs);
 
 std::ostream& operator<<(std::ostream& os, const StringView& sv);
+
+template <>
+struct Hash<StringView>
+{
+	size_t operator()(const StringView& val) const
+	{
+		return HashFn::djb2(val.c_str(), val.length());
+	}
+};
 
 #endif // STRING_VIEW_HPP
