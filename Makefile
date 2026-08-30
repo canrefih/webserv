@@ -7,7 +7,7 @@ CPPFLAGS = -Iinclude
 LIB_SRCS = src/lib/StringBuilder.cpp \
 			src/lib/Profiler.cpp \
 			src/lib/StringView.cpp \
-			src/lib/HashMap.cpp \
+			src/lib/HashFn.cpp \
 
 SRCS = $(LIB_SRCS) \
 	   src/main.cpp \
