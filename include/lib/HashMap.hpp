@@ -373,11 +373,11 @@ public:
 		Slot *_pos;
 		Slot *_end;
 
+		typedef HashMap::value_type value_type;
 		typedef std::forward_iterator_tag iterator_category;
+		typedef std::ptrdiff_t difference_type;
 		typedef typename IteratorTraits<IsConst, value_type>::reference reference;
 		typedef typename IteratorTraits<IsConst, value_type>::pointer pointer;
-		typedef value_type value_type; // boiler plate just for explicit definition
-		typedef std::ptrdiff_t difference_type;
 
 		Iterator() : _pos(NULL), _end(NULL) {}
 		Iterator(Slot *pos, Slot *end) : _pos(pos), _end(end) {}
