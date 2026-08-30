@@ -2,46 +2,150 @@
 #include <iostream>
 
 struct TestData {
-	std::string decoded;
-	std::string encoded;
+	std::string input;
+	std::string expected;
 };
 
 std::ostream& operator<<(std::ostream& out, TestData data)
 {
 	out << "{" << std::endl
-		<< "decoded: " << data.decoded << std::endl
-		<< "encoded: " << data.encoded << std::endl
+		<< "input:    " << data.input << std::endl
+		<< "expected: " << data.expected << std::endl
+		<< "}";
+	return out;
+}
+
+#define EXPECT_OK true
+#define EXPECT_ERR false
+
+struct CreateTestData {
+	std::string input;
+	bool        expect_ok;
+	std::string path;
+	std::string host;
+	std::string query;
+};
+
+std::ostream& operator<<(std::ostream& out, CreateTestData data)
+{
+	out << "{" << std::endl
+		<< "input:     " << data.input << std::endl
+		<< "expect_ok: " << (data.expect_ok ? "true" : "false") << std::endl
+		<< "path:      " << data.path << std::endl
+		<< "host:      " << data.host << std::endl
+		<< "query:     " << data.query << std::endl
 		<< "}";
 	return out;
 }
 
 enum TestType {
 	TEST_ENCODE,
-	TEST_DECODE,
+	TEST_DECODE_OK,
+	TEST_DECODE_ERR,
+	TEST_NORMALIZE_OK,
+	TEST_NORMALIZE_ERR,
 };
 
 bool do_test(TestData data, TestType test_type)
 {
 	std::string result;
-	std::string expected;
+
 	switch (test_type)
 	{
-		case TEST_ENCODE: {
-			result = URL::encode(data.decoded);
-			expected = data.encoded;
+		case TEST_ENCODE:
+		{
+			result = URL::encode(data.input);
 		} break;
-		case TEST_DECODE: {
-			result = URL::decode(data.encoded);
-			expected = data.decoded;
+		case TEST_DECODE_OK:
+		{
+			std::pair<std::string, bool> decode_res = URL::decode(data.input);
+			if (decode_res.second == false)
+			{
+				std::cout << std::endl << "Error!" << std::endl << std::endl
+					<< "decode test failed on valid input: " << data << std::endl;
+				return false;
+			}
+			result = decode_res.first;
 		} break;
-		default: break;
+		case TEST_DECODE_ERR:
+		{
+			std::pair<std::string, bool> decode_res = URL::decode(data.input);
+			if (decode_res.second == true)
+			{
+				std::cout << std::endl << "Error!" << std::endl << std::endl
+					<< "decode should have failed on: " << data.input << std::endl;
+				return false;
+			}
+			return true;
+		} break;
+		case TEST_NORMALIZE_OK:
+		{
+			std::pair<std::string, bool> normalize_res = URL::normalize(data.input);
+			if (normalize_res.second == false)
+			{
+				std::cout << std::endl << "Error!" << std::endl << std::endl
+					<< "normalize test failed on valid input: " << data << std::endl;
+				return false;
+			}
+			result = normalize_res.first;
+		} break;
+		case TEST_NORMALIZE_ERR:
+		{
+			std::pair<std::string, bool> normalize_res = URL::normalize(data.input);
+			if (normalize_res.second == true)
+			{
+				std::cout << std::endl << "Error!" << std::endl << std::endl
+					<< "normalize should fail on out-of-scope '..': "
+					<< data.input << std::endl;
+				return false;
+			}
+			return true;
+		} break;
 	}
-	if (result != expected)
+	if (result != data.expected)
 	{
 		std::cout << std::endl << "Error!" << std::endl << std::endl
 			<< "test data: " << data << std::endl
-					<< "result:\t\t" << result << std::endl
-					<< "expected:\t" << expected << std::endl << std::endl;
+			<< "result:\t\t" << result << std::endl
+			<< "expected:\t" << data.expected << std::endl << std::endl;
+		return false;
+	}
+	return true;
+}
+
+bool do_create_test(CreateTestData data)
+{
+	std::pair<URL, bool> create_res = URL::createFromRequestTarget(data.input);
+
+	if (create_res.second != data.expect_ok)
+	{
+		std::cout << std::endl << "Error!" << std::endl << std::endl
+			<< "createFromRequestTarget should have "
+			<< (data.expect_ok ? "succeeded" : "failed") << " on: "
+			<< data.input << std::endl;
+		return false;
+	}
+	if (create_res.second == false)
+		return true;
+
+	URL url = create_res.first;
+
+	if (url.getContent() != data.input)
+	{
+		std::cout << std::endl << "Error!" << std::endl << std::endl
+			<< "content should be the raw input: " << data << std::endl
+			<< "content:\t" << url.getContent() << std::endl << std::endl;
+		return false;
+	}
+	if (url.getPath() != data.path
+		|| url.getHost() != data.host
+		|| url.getQuery() != data.query)
+	{
+		std::cout << std::endl << "Error!" << std::endl << std::endl
+			<< "test data: " << data << std::endl
+			<< "result:\tpath=\"" << url.getPath()
+			<< "\" host=\"" << url.getHost()
+			<< "\" query=\"" << url.getQuery() << "\"" << std::endl << std::endl;
 		return false;
 	}
 	return true;
@@ -49,7 +153,7 @@ bool do_test(TestData data, TestType test_type)
 
 int main(void)
 {
-	TestData tests[] = {
+	TestData encode_tests[] = {
 		{"hello world","hello%20world"},
 		{"user@example.com","user%40example.com"},
 		{"café au lait","caf%C3%A9%20au%20lait"},
@@ -72,16 +176,128 @@ int main(void)
 		{"~tilde_pipe|","~tilde_pipe%7C"}
 	};
 
-	const std::size_t tests_count = sizeof(tests)/sizeof(TestData);
-	std::cout << "Encoding tests\n"; 
-	for (std::size_t i = 0; i < tests_count; ++i)
-		if (!do_test(tests[i], TEST_ENCODE)) return 1;
+	TestData decode_err_tests[] = {
+		{"%", ""},
+		{"%1", ""},
+		{"%GG", ""},
+		{"hello%2", ""},
+		{"a%zzb", ""},
+		{"%2f%2", ""},
+		{"100 % cat", ""},
+	};
 
+	TestData normalize_tests[] = {
+		{"a/b", "a/b"},
+		{"/a/b/c", "/a/b/c"},
+		{"a/./b", "a/./b"},
+		{"./a/b", "./a/b"},
+		{"a/b/../c", "/a/c"},
+		{"/a/b/../../c", "/c"},
+		{"a/./b/../c", "/a/c"},
+		{"a//b/./../c//d", "/a/c/d"},
+		{"a/b/c", "a/b/c"},
+		{"a/b/c/../../../", "/"},
+		{"a/../c/../d/../basdasd/../", "/"},
+		{"/", "/"},
+	};
+
+	TestData normalize_err_tests[] = {
+		{"..", ""},
+		{"../a", ""},
+		{"a/../..", ""},
+		{"/a/../../b", ""},
+		{"a/b/../../../c", ""},
+		{"a/b/../../c/../a/b/c/d/ef/../../../../../../", ""},
+	};
+
+	std::size_t count;
+
+	std::cout << "Encoding tests\n";
+	count = sizeof(encode_tests) / sizeof(TestData);
+	for (std::size_t i = 0; i < count; ++i)
+		if (!do_test(encode_tests[i], TEST_ENCODE)) return 1;
 	std::cout << "OK!\n";
-	std::cout << "Decoding tests\n"; 
-	for (std::size_t i = 0; i < tests_count; ++i)
-		if (!do_test(tests[i], TEST_DECODE)) return 1;
+
+	// le décodage est l'inverse de l'encodage : input/expected inversés
+	std::cout << "Decoding tests\n";
+	count = sizeof(encode_tests) / sizeof(TestData);
+	for (std::size_t i = 0; i < count; ++i)
+	{
+		TestData reversed = {encode_tests[i].expected, encode_tests[i].input};
+		if (!do_test(reversed, TEST_DECODE_OK)) return 1;
+	}
+	std::cout << "OK!\n";
+
+	std::cout << "Decoding error tests\n";
+	count = sizeof(decode_err_tests) / sizeof(TestData);
+	for (std::size_t i = 0; i < count; ++i)
+		if (!do_test(decode_err_tests[i], TEST_DECODE_ERR)) return 1;
+	std::cout << "OK!\n";
+
+	std::cout << "Normalize tests\n";
+	count = sizeof(normalize_tests) / sizeof(TestData);
+	for (std::size_t i = 0; i < count; ++i)
+		if (!do_test(normalize_tests[i], TEST_NORMALIZE_OK)) return 1;
+	std::cout << "OK!\n";
+
+	std::cout << "Normalize out-of-scope tests\n";
+	count = sizeof(normalize_err_tests) / sizeof(TestData);
+	for (std::size_t i = 0; i < count; ++i)
+		if (!do_test(normalize_err_tests[i], TEST_NORMALIZE_ERR)) return 1;
 	std::cout << "OK!" << std::endl;
+
+	CreateTestData create_tests[] = {
+		{"/", true, "/", "", ""},
+		{"/index.html", true, "/index.html", "", ""},
+		{"/a/b/c", true, "/a/b/c", "", ""},
+		{"/search?q=webserv&lang=fr", true, "/search", "", "q=webserv&lang=fr"},
+		{"/path?", true, "/path", "", ""},
+		{"/?q=hello world", true, "/", "", "q=hello world"},
+		// la query N'EST PAS décodée : les %XX restent bruts (destinée à QUERY_STRING du CGI)
+		{"/search?q=a%20b%26c", true, "/search", "", "q=a%20b%26c"},
+		{"/hello%20world", true, "/hello world", "", ""},
+		{"/%41%42%43", true, "/ABC", "", ""},
+		{"/caf%C3%A9", true, "/caf\xC3\xA9", "", ""},
+		{"/a%2Fb", true, "/a/b", "", ""},
+		{"/a/b/../c", true, "/a/c", "", ""},
+		{"/a/b/../c?d=1", true, "/a/c", "", "d=1"},
+		{"/a//b///c", true, "/a//b///c", "", ""},
+		{"/a/./b", true, "/a/./b", "", ""},
+		{"http://example.com/index.html", true, "/index.html", "example.com", ""},
+		{"https://example.com:8080/a/b?x=1", true, "/a/b", "example.com:8080", "x=1"},
+		{"http://example.com", true, "/", "example.com", ""},
+		{"http://example.com/", true, "/", "example.com", ""},
+	};
+
+	CreateTestData create_err_tests[] = {
+		{"", false, "", "", ""},
+		{"index.html", false, "", "", ""},
+		{"?q=1", false, "", "", ""},
+		{"ftp://example.com/", false, "", "", ""},
+		{"http:/example.com", false, "", "", ""},
+		{"http", false, "", "", ""},
+		{"/path#fragment", false, "", "", ""},
+		{"http://example.com/p#f", false, "", "", ""},
+		{"/a b", false, "", "", ""},
+		{"/bad%zz", false, "", "", ""},
+		{"/bad%2", false, "", "", ""},
+		{"/a/../../b", false, "", "", ""},
+		{"/../secret", false, "", "", ""},
+		{"/%2e%2e/secret", false, "", "", ""},
+		{"/%2E%2E/secret", false, "", "", ""},
+	};
+
+	std::cout << "CreateFromRequestTarget tests\n";
+	count = sizeof(create_tests) / sizeof(CreateTestData);
+	for (std::size_t i = 0; i < count; ++i)
+		if (!do_create_test(create_tests[i])) return 1;
+	std::cout << "OK!\n";
+
+	std::cout << "CreateFromRequestTarget error tests\n";
+	count = sizeof(create_err_tests) / sizeof(CreateTestData);
+	for (std::size_t i = 0; i < count; ++i)
+		if (!do_create_test(create_err_tests[i])) return 1;
+	std::cout << "OK!" << std::endl;
+
 	return 0;
 }
-
