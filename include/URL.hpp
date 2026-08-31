@@ -6,7 +6,6 @@
 
 class URL
 {
-	std::string _content;
 	std::string _host;
 	std::string _path;
 	std::string _query;
@@ -17,7 +16,7 @@ public:
 	URL(const URL& other);
 	URL& operator=(const URL& other);
 
-	const std::string& getContent() const;
+	const std::string getContent() const;
 	const std::string& getHost() const;
 	const std::string& getPath() const;
 	const std::string& getQuery() const;

@@ -130,13 +130,6 @@ bool do_create_test(CreateTestData data)
 
 	URL url = create_res.first;
 
-	if (url.getContent() != data.input)
-	{
-		std::cout << std::endl << "Error!" << std::endl << std::endl
-			<< "content should be the raw input: " << data << std::endl
-			<< "content:\t" << url.getContent() << std::endl << std::endl;
-		return false;
-	}
 	if (url.getPath() != data.path
 		|| url.getHost() != data.host
 		|| url.getQuery() != data.query)

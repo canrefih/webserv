@@ -10,8 +10,7 @@
 URL::URL() {}
 URL::~URL() {}
 URL::URL(const URL& other)
-	: _content(other._content),
-	_host(other._host),
+	: _host(other._host),
 	_path(other._path),
 	_query(other._query) {}
 
@@ -19,7 +18,6 @@ URL& URL::operator=(const URL& other)
 {
 	if (this != &other)
 	{
-		_content = other._content;
 		_path = other._path;
 		_host = other._host;
 		_query = other._query;
@@ -27,16 +25,17 @@ URL& URL::operator=(const URL& other)
 	return *this;
 }
 
-const std::string& URL::getContent() const { return _content; }
 const std::string& URL::getHost() const { return _host; }
 const std::string& URL::getPath() const { return _path; }
 const std::string& URL::getQuery() const { return _query; }
+const std::string URL::getContent() const
+{
+	return _host + _path + _query;
+}
 
 std::pair<URL, bool> URL::createFromRequestTarget(const std::string& s)
 {
 	URL url;
-
-	url._content = s;
 
 	if (s.find('#') != std::string::npos)
 		return std::make_pair(url, false);
