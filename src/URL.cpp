@@ -1,8 +1,9 @@
 #include "URL.hpp"
-#include <sstream>
 
+#include <sstream>
 #include <cctype>
-#include <cctype>
+#include <algorithm>
+#include <vector>
 #include <exception>
 #include <iostream>
 
