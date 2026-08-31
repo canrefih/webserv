@@ -16,7 +16,7 @@ public:
 	URL(const URL& other);
 	URL& operator=(const URL& other);
 
-	const std::string getContent() const;
+	std::string getContent() const;
 	const std::string& getHost() const;
 	const std::string& getPath() const;
 	const std::string& getQuery() const;
