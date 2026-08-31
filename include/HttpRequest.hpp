@@ -3,6 +3,7 @@
 
 #include <string>
 #include <map>
+#include "URL.hpp"
 
 /**
  * Represents an HTTP request with its method, target, version, headers, and body.
@@ -17,7 +18,7 @@ class HttpRequest
 {
 	private:
 		std::string				_method;
-		std::string				_target;
+		URL						_target;
 		std::string				_version;
 		std::map<std::string, std::string> _headers;
 		std::string _body;
@@ -29,7 +30,7 @@ class HttpRequest
 		bool parse(const std::string &rawRequest);
 
 		const std::string &getMethod() const; // Returns the HTTP method (e.g., GET, POST) of the request
-		const std::string &getTarget() const; // Returns the target (path) of the request (e.g., /index.html)
+		const URL &getTarget() const; // Returns the target url of the request (e.g., /index.html)
 		const std::string &getVersion() const; // Returns the HTTP version of the request (e.g., HTTP/1.1)
 		const std::string &getBody() const; // Returns the body of the request (if any)
 		const std::string &getHeader(const std::string &name) const; // Returns the value of a specific header by name (case-insensitive)
