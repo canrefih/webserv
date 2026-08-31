@@ -31,25 +31,14 @@ std::vector<std::string> buildCGIEnv(const HttpRequest &request, const std::stri
 {
 	std::vector<std::string> env;
 	std::string scriptName;
-	std::string queryString;
 	std::ostringstream portStream;
 	std::ostringstream lenStream;
 
 
 	/*split "target" (e.g. "/cgi-bin/hello.py?x=1") into the script
 	path (SCRIPT_NAME) and the query string (QUERY_STRING)*/
-	std::string target = request.getTarget();
-	std::string::size_type qPos = target.find('?');
-	if (qPos == std::string::npos)
-	{
-		scriptName = target;
-		queryString = "";
-	}
-	else
-	{
-		scriptName = target.substr(0,qPos);
-		queryString = target.substr(qPos + 1);
-	}
+	std::string target = request.getTarget().getPath();
+	std::string queryString = request.getTarget().getQuery();
 	portStream << serverPort;
 	std::string portStr = portStream.str();
 	lenStream << request.getBody().size();

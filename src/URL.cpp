@@ -28,7 +28,7 @@ URL& URL::operator=(const URL& other)
 const std::string& URL::getHost() const { return _host; }
 const std::string& URL::getPath() const { return _path; }
 const std::string& URL::getQuery() const { return _query; }
-const std::string URL::getContent() const
+std::string URL::getContent() const
 {
 	return _host + _path + _query;
 }

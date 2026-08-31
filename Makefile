@@ -31,6 +31,7 @@ TESTS_SRCS = tests/test_config_parsing.cpp\
 		tests/test_url.cpp
 
 OBJS = $(SRCS:src/%.cpp=obj/%.o)
+DEPS = $(OBJS:.o=.d)
 TESTS = $(TESTS_SRCS:tests/%.cpp=tests/bin/%.out)
 TESTS_OBJS = $(filter-out obj/main.o,$(OBJS))
 
@@ -50,7 +51,9 @@ tests: $(TESTS_OBJS) $(TESTS)
 
 obj/%.o: src/%.cpp
 	@mkdir -p $(dir $@)
-	$(CXX) $(CXXFLAGS) $(CPPFLAGS) -c $< -o $@
+	$(CXX) $(CXXFLAGS) $(CPPFLAGS) -MMD -MP -c $< -o $@
+
+-include $(DEPS)
 
 run_tests: $(TESTS_OBJS) $(TESTS)
 	@TESTS_BINARIES="$(TESTS)" ./tests/run_all_tests.sh
