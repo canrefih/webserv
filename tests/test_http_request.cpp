@@ -31,7 +31,7 @@ int main()
 		return 1;
 	}
 
-	if (request1.getTarget() != "/index.html")
+	if (request1.getTarget().getPath() != "/index.html")
 	{
 		std::cerr << "FAIL: Target incorrect" << std::endl;
 		return 1;
