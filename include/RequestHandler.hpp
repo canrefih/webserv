@@ -4,6 +4,7 @@
 #include "ServerConfig.hpp"
 #include "HttpRequest.hpp"
 #include "HttpResponse.hpp"
+#include "Location.hpp"
 #include <string>
 
 /*
@@ -23,7 +24,7 @@ class RequestHandler
 		bool fileExists(const std::string &path); // Check if a file exists at the specified path in the filesystem and return true if it does, false otherwise
 		bool isFile(const std::string &path); // Check if the specified path corresponds to
 		bool isDirectory(const std::string &path); // Check if the specified path corresponds to a directory in the filesystem and return true if it does, false otherwise
-		void setErrorResponse(HttpResponse &response, int statusCode, 
+		void setErrorResponse(HttpResponse &response, int statusCode,
 							  const std::string &statusText, const std::string &defaultBody); // Set an error response with the specified status code, status text, and default body content. If a custom error page is configured for the status code, it will be used instead of the default body.
 
 	public:
@@ -31,6 +32,8 @@ class RequestHandler
 		~RequestHandler();
 
 		void handleRequest(const HttpRequest &request, HttpResponse &response); // Handle an HTTP request and generate an appropriate response based on the server configuration, request method, target, and other factors. The response is populated with the status code, headers, and body content.
+		bool resolveCGI(const HttpRequest &request, const Location *location, std::string &scriptPath, std::string &interpreterPath) const;
+
 };
 
 #endif

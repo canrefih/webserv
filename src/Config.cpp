@@ -1,4 +1,5 @@
 #include "Config.hpp"
+#include "Location.hpp"
 
 #include <fstream>
 #include <sstream>
@@ -311,6 +312,34 @@ bool Config::parse(const std::string &filename)
                 return false;
             }
         }
+		else if (directive == "cgi_extension")
+		{
+			if (currentLocation == NULL)
+			{
+				std::cerr << "Error: cgi_extension must be "
+						<< "inside location"
+						<< std::endl;
+				return false;
+			}
+
+			std::string extension;
+			std::string interpreterPath;
+
+			iss >> extension;
+			iss >> interpreterPath;
+
+			if (!extension.empty() && extension[extension.size() - 1] == ';')
+				extension.erase(extension.size() - 1);
+			if (!interpreterPath.empty() && interpreterPath[interpreterPath.size() - 1] == ';')
+				interpreterPath.erase(interpreterPath.size() - 1);
+			if (extension.empty() || interpreterPath.empty())
+			{
+				std::cerr << "Error: invalid cgi_extension directive"
+						<< std::endl;
+				return false;
+			}
+			currentLocation->addCgiExtension(extension, interpreterPath);
+		}
         else if (directive == "upload_store")
         {
             if (currentLocation == NULL)

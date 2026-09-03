@@ -38,6 +38,7 @@ public:
 	void	closeStdoutFd( void );		//once EOF has been read
 
 	int		tryWait( int &exitCode );
+	void	kill( void );				//force-terminate a runaway CGI (e.g. on timeout)
 };
 
 

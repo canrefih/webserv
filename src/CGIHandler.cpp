@@ -3,6 +3,7 @@
 #include <fcntl.h>
 #include <cerrno>
 #include <cstdlib>
+#include <csignal>
 
 static bool	setNonBlocking( int fd )
 {
@@ -78,7 +79,6 @@ bool	CGIHandler::setupPipes( void )
 }
 
 /*
-Runs only in the child process (pid == 0).
 Redirects the CGI's stdin/stdout onto the pipe ends it needs
 (read end of pipe_in -> stdin, write end of pipe_out -> stdout),
 closes every fd it doesn't need, then replaces itself with the
@@ -177,7 +177,6 @@ int		CGIHandler::tryWait( int &exitCode )
 		return (-1);
 	}
 	running = false;
-	g_serverRunning = false; // test with Signal.hpp for main loop
 	if (WIFEXITED(status))
 		exitCode = WEXITSTATUS(status);
 	else if (WIFSIGNALED(status))
@@ -188,4 +187,16 @@ int		CGIHandler::tryWait( int &exitCode )
 	else
 		exitCode = -256;
 	return (1);
+}
+
+/*
+Force-terminates the child (e.g. when it has run past the server's
+CGI timeout). Only sends the signal while we still believe the
+child is running; tryWait() still needs to be called afterwards to
+reap it once waitpid() reports it as exited.
+*/
+void	CGIHandler::kill( void )
+{
+	if (running)
+		::kill(pid, SIGKILL);
 }

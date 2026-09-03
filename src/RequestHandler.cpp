@@ -363,7 +363,7 @@ std::string RequestHandler::generateDirectoryListing(const std::string &path, co
 }
 
 // Set an error response with the specified status code, status text, and default body. If a custom error page is configured for the status code, it will be used instead of the default body.
-void RequestHandler::setErrorResponse(HttpResponse &response, int statusCode, 
+void RequestHandler::setErrorResponse(HttpResponse &response, int statusCode,
 									   const std::string &statusText, const std::string &defaultBody)
 {
 	const std::string *errorPage = _serverConfig.getErrorPage(statusCode);
@@ -386,4 +386,35 @@ void RequestHandler::setErrorResponse(HttpResponse &response, int statusCode,
 	response.setStatus(statusCode, statusText);
 	response.setBody(defaultBody);
 	response.setContentType("text/plain");
+}
+
+bool RequestHandler::resolveCGI(const HttpRequest &request, const Location *location, std::string &scriptPath, std::string &interpreterPath) const
+{
+	if (location == NULL)
+		return (false);
+
+	std::string target = request.getTarget();
+	std::string::size_type qPos = target.find('?');
+	std::string targetPath = (qPos == std::string::npos) ? target : target.substr(0, qPos);
+
+	if (targetPath.find("..") != std::string::npos) // Prevent directory traversal attacks, same check as GET/DELETE
+		return (false);
+
+	std::string root = location->getRoot();
+	std::string locationPath = location->getPath();
+	std::string relativePath = targetPath.substr(locationPath.size());
+
+	if (relativePath.empty())
+		relativePath = "/";
+
+	std::string path = root + relativePath;
+	std::size_t dot = path.find_last_of('.');
+	if (dot == std::string::npos)
+		return (false);
+	std::string extension = path.substr(dot);
+	if (!location->isCgiExtension(extension))
+		return (false);
+	scriptPath = path;
+	interpreterPath = location->getCgiInterpreter(extension);
+	return (true);
 }
