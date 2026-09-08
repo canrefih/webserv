@@ -376,7 +376,7 @@ bool RequestHandler::resolveCGI(const HttpRequest &request, const Location *loca
 	if (location == NULL)
 		return (false);
 
-	std::string target = request.getTarget();
+	std::string target = request.getTarget().getPath();
 	std::string::size_type qPos = target.find('?');
 	std::string targetPath = (qPos == std::string::npos) ? target : target.substr(0, qPos);
 
