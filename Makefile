@@ -20,7 +20,8 @@ SRCS = $(LIB_SRCS) \
        src/RequestHandler.cpp \
        src/Signal.cpp \
        src/CGIHandler.cpp \
-       src/CGIEnvBuilder.cpp
+       src/CGIEnvBuilder.cpp \
+       src/URL.cpp
 
 TESTS_SRCS = tests/test_config_parsing.cpp\
 		tests/test_http_request.cpp\
@@ -33,9 +34,11 @@ TESTS_SRCS = tests/test_config_parsing.cpp\
 		tests/test_multi_socket.cpp\
 		tests/test_signal_handling.cpp\
 		tests/test_timeout_protection.cpp\
-		tests/test_lib.cpp
+		tests/test_lib.cpp\
+		tests/test_url.cpp\
 
 OBJS = $(SRCS:src/%.cpp=obj/%.o)
+DEPS = $(OBJS:.o=.d)
 TESTS = $(TESTS_SRCS:tests/%.cpp=tests/bin/%.out)
 TESTS_OBJS = $(filter-out obj/main.o,$(OBJS))
 
@@ -51,9 +54,13 @@ debug:
 $(NAME): $(OBJS)
 	$(CXX) $(CXXFLAGS) $(OBJS) -o $(NAME)
 
+tests: $(TESTS_OBJS) $(TESTS)
+
 obj/%.o: src/%.cpp
 	@mkdir -p $(dir $@)
-	$(CXX) $(CXXFLAGS) $(CPPFLAGS) -c $< -o $@
+	$(CXX) $(CXXFLAGS) $(CPPFLAGS) -MMD -MP -c $< -o $@
+
+-include $(DEPS)
 
 run_tests: $(TESTS_OBJS) $(TESTS)
 	@TESTS_BINARIES="$(TESTS)" ./tests/run_all_tests.sh
