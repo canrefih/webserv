@@ -448,7 +448,7 @@ void Server::handleClientRead(std::size_t index)
 	}
 
 	std::cout << "Method:  " << request.getMethod() << std::endl;
-	std::cout << "Target:  " << request.getTarget() << std::endl;
+	std::cout << "Target:  " << request.getTarget().getPath() << std::endl;
 	std::cout << "Version: " << request.getVersion() << std::endl;
 
 	RequestHandler handler(*serverConfig);

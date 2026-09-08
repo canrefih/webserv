@@ -40,8 +40,18 @@ bool HttpRequest::parse(const std::string &rawRequest)
 	// Parse request line
 	std::istringstream requestLine(line);
 
-	if (!(requestLine >> _method >> _target >> _version))
+	std::string raw_target;
+
+	if (!(requestLine >> _method >> raw_target >> _version))
 		return false;
+
+	std::pair<URL, bool> url_parsed = URL::createFromRequestTarget(raw_target);
+
+	// check if URL is malformed
+	if (!url_parsed.second)
+		return false;
+
+	_target = url_parsed.first;
 
 	// Parse headers
 	while (std::getline(stream, line))
@@ -86,7 +96,7 @@ const std::string &HttpRequest::getMethod() const
 	return _method;
 }
 
-const std::string &HttpRequest::getTarget() const
+const URL &HttpRequest::getTarget() const
 {
 	return _target;
 }

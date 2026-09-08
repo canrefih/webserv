@@ -22,7 +22,7 @@ RequestHandler::~RequestHandler()
 // Handle the incoming HTTP request and generate an appropriate HTTP response based on the request method, target, and server configuration.
 void RequestHandler::handleRequest(const HttpRequest &request, HttpResponse &response)
 {
-	const Location *location = _serverConfig.findLocation(request.getTarget());
+	const Location *location = _serverConfig.findLocation(request.getTarget().getPath());
 
 	if (location != NULL &&
 		!location->isMethodAllowed(request.getMethod()))
@@ -92,138 +92,121 @@ void RequestHandler::handleRequest(const HttpRequest &request, HttpResponse &res
 	}
 	else if (request.getMethod() == "DELETE")
 	{
-		if (request.getTarget().find("..") != std::string::npos) // Prevent directory traversal attacks by checking for ".." in the target path
+		std::string root = _serverConfig.getRoot();
+		std::string path;
+
+		if (location != NULL && !location->getRoot().empty()) // If a location is found and it has a specific root configured, use that root to construct the full path
+		{
+			root = location->getRoot();
+			std::string locationPath = location->getPath();
+			std::string requestPath = request.getTarget().getPath();
+
+			path = root + requestPath.substr(locationPath.size());
+		}
+		else
+		{
+			path = root + request.getTarget().getPath();
+		}
+
+		if (!fileExists(path) && !isDirectory(path))
+		{
+			setErrorResponse(response, 404, "Not Found", "Not Found\n");
+		}
+		else if (isDirectory(path))
 		{
 			setErrorResponse(response, 403, "Forbidden", "Forbidden\n");
 		}
 		else
 		{
-			std::string root = _serverConfig.getRoot();
-			std::string path;
-
-			if (location != NULL && !location->getRoot().empty()) // If a location is found and it has a specific root configured, use that root to construct the full path
+			if (unlink(path.c_str()) == 0) // If the file is successfully deleted, set the response to indicate success with a 204 No Content status
 			{
-				root = location->getRoot();
-				std::string locationPath = location->getPath();
-				std::string relativePath = request.getTarget().substr(locationPath.size());
-
-				if (relativePath.empty())
-					relativePath = "/";
-
-				path = root + relativePath;
+				response.setStatus(204, "No Content");
+				response.setBody("");
+				response.setContentType("text/plain");
 			}
 			else
 			{
-				path = root + request.getTarget();
-			}
-
-			if (!fileExists(path) && !isDirectory(path))
-			{
-				setErrorResponse(response, 404, "Not Found", "Not Found\n");
-			}
-			else if (isDirectory(path))
-			{
-				setErrorResponse(response, 403, "Forbidden", "Forbidden\n");
-			}
-			else
-			{
-				if (unlink(path.c_str()) == 0) // If the file is successfully deleted, set the response to indicate success with a 204 No Content status
-				{
-					response.setStatus(204, "No Content");
-					response.setBody("");
-					response.setContentType("text/plain");
-				}
-				else
-				{
-					response.setStatus(500, "Internal Server Error");
-					response.setBody("Internal Server Error\n");
-					response.setContentType("text/plain");
-				}
+				response.setStatus(500, "Internal Server Error");
+				response.setBody("Internal Server Error\n");
+				response.setContentType("text/plain");
 			}
 		}
 	}
 	else if (request.getMethod() == "GET")
 	{
-		if (request.getTarget().find("..") != std::string::npos)
+		std::string root = _serverConfig.getRoot();
+		std::string path;
+
+		if (location != NULL && !location->getRoot().empty())
 		{
-			setErrorResponse(response, 403, "Forbidden", "Forbidden\n");
+			root = location->getRoot();
+			std::string locationPath = location->getPath();
+			std::string relativePath = request.getTarget().getPath().substr(locationPath.size());
+
+			if (relativePath.empty())
+				relativePath = "/";
+
+			path = root + relativePath;
 		}
 		else
 		{
-			std::string root = _serverConfig.getRoot();
-			std::string path;
+			path = root + request.getTarget().getPath();
+		}
 
-			if (location != NULL && !location->getRoot().empty())
+		if (!fileExists(path) && !isDirectory(path))
+		{
+			setErrorResponse(response, 404, "Not Found", "Not Found\n");
+		}
+		else if (isDirectory(path)) // If the target path is a directory, check for an index file or generate a directory listing based on the server configuration and location settings
+		{
+			std::string directoryPath = path;
+
+			if (directoryPath[directoryPath.size() - 1] != '/')
+				directoryPath += "/";
+
+			std::string index = _serverConfig.getIndex();
+
+			if (location != NULL && !location->getIndex().empty())
+				index = location->getIndex();
+
+			std::string indexPath = directoryPath + index;
+
+			if (fileExists(indexPath)) // If an index file exists in the directory, read its contents and set it as the response body with a 200 OK status
 			{
-				root = location->getRoot();
-				std::string locationPath = location->getPath();
-				std::string relativePath = request.getTarget().substr(locationPath.size());
-
-				if (relativePath.empty())
-					relativePath = "/";
-
-				path = root + relativePath;
-			}
-			else
-			{
-				path = root + request.getTarget();
-			}
-
-			if (!fileExists(path) && !isDirectory(path))
-			{
-				setErrorResponse(response, 404, "Not Found", "Not Found\n");
-			}
-			else if (isDirectory(path)) // If the target path is a directory, check for an index file or generate a directory listing based on the server configuration and location settings
-			{
-				std::string directoryPath = path;
-
-				if (directoryPath[directoryPath.size() - 1] != '/')
-					directoryPath += "/";
-
-				std::string index = _serverConfig.getIndex();
-
-				if (location != NULL && !location->getIndex().empty())
-					index = location->getIndex();
-
-				std::string indexPath = directoryPath + index;
-
-				if (fileExists(indexPath)) // If an index file exists in the directory, read its contents and set it as the response body with a 200 OK status
-				{
-					std::string body = readFile(indexPath);
-
-					response.setStatus(200, "OK");
-					response.setBody(body);
-					response.setContentType(getContentType(indexPath));
-				}
-				else
-				{
-					bool autoindex = _serverConfig.getAutoIndex();
-
-					if (location != NULL && location->isAutoIndexSet())
-						autoindex = location->getAutoIndex();
-
-					if (autoindex) // If autoindex is enabled, generate a directory listing and set it as the response body with a 200 OK status
-					{
-						std::string body = generateDirectoryListing(directoryPath, request.getTarget());
-
-						response.setStatus(200, "OK");
-						response.setBody(body);
-						response.setContentType("text/html");
-					}
-					else
-					{
-						setErrorResponse(response, 403, "Forbidden", "Forbidden\n");
-					}
-				}
-			}
-			else // If the target path is a file, read its contents and set it as the response body with a 200 OK status
-			{
-				std::string body = readFile(path);
+				std::string body = readFile(indexPath);
 
 				response.setStatus(200, "OK");
 				response.setBody(body);
-				response.setContentType(getContentType(path));
+				response.setContentType(getContentType(indexPath));
 			}
+			else
+			{
+				bool autoindex = _serverConfig.getAutoIndex();
+
+				if (location != NULL && location->isAutoIndexSet())
+					autoindex = location->getAutoIndex();
+
+				if (autoindex) // If autoindex is enabled, generate a directory listing and set it as the response body with a 200 OK status
+				{
+					std::string body = generateDirectoryListing(directoryPath, request.getTarget().getPath());
+
+					response.setStatus(200, "OK");
+					response.setBody(body);
+					response.setContentType("text/html");
+				}
+				else
+				{
+					setErrorResponse(response, 403, "Forbidden", "Forbidden\n");
+				}
+			}
+		}
+		else // If the target path is a file, read its contents and set it as the response body with a 200 OK status
+		{
+			std::string body = readFile(path);
+
+			response.setStatus(200, "OK");
+			response.setBody(body);
+			response.setContentType(getContentType(path));
 		}
 	}
 	else // If the request method is not supported, set an error response indicating that the method is not allowed (405)
