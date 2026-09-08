@@ -236,7 +236,7 @@ void Server::run() // Main server loop: Poll for events on listening and client 
 		{
 			if (errno == EINTR)
 				continue;  // Signal interrupted, check g_serverRunning again
-			
+
 			std::cerr << "Error: poll() failed: "
 					  << strerror(errno) << std::endl;
 			return;
@@ -452,7 +452,7 @@ void Server::handleClientRead(std::size_t index)
 	std::cout << "Version: " << request.getVersion() << std::endl;
 
 	RequestHandler handler(*serverConfig);
-	const Location *location = serverConfig->findLocation(request.getTarget());
+	const Location *location = serverConfig->findLocation(request.getTarget().getPath());
 	std::string scriptPath;
 	std::string interpreterPath;
 	bool methodAllowed = (location == NULL || location->isMethodAllowed(request.getMethod()));
@@ -547,7 +547,7 @@ void Server::handleClientWrite(std::size_t index)
 REMOVE CLIENT for "resource lifecycle" management: Close the client socket, remove it from the poll list,
 and clean up associated buffers and server configuration mappings.
 Acquire -> Use -> Release
-*/ 
+*/
 void Server::removeClient(std::size_t index)
 {
 	int clientFd = _pollFds[index].fd;

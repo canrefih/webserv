@@ -15,7 +15,7 @@ SRCS = src/main.cpp \
        src/Signal.cpp \
        src/CGIHandler.cpp \
        src/CGIEnvBuilder.cpp \
-       src/CGIManager.cpp
+       src/CGIManager.cpp \
        src/URL.cpp
 
 TESTS_SRCS = tests/test_config_parsing.cpp\
