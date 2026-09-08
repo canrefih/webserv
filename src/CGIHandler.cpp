@@ -93,6 +93,14 @@ void	CGIHandler::childProcess( void )
 	close(fd[1]);
 	close(fd[2]);
 	close(fd[3]);
+
+	long maxFd = sysconf(_SC_OPEN_MAX); // fork() copied every fd the server had open (listening sockets, other clients, other CGI pipes); the child must not hold onto any of them
+
+	if (maxFd < 0)
+		maxFd = 1024;
+	for (int i = 3; i < maxFd; i++)
+		close(i);
+
 	execve(_argv[0], const_cast<char**>(&_argv[0]), const_cast<char**>(&_envp[0]));
 	std::cerr<< strerror(errno) << std::endl;
 	exit(errno);

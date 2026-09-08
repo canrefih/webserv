@@ -32,7 +32,7 @@ class RequestHandler
 		~RequestHandler();
 
 		void handleRequest(const HttpRequest &request, HttpResponse &response); // Handle an HTTP request and generate an appropriate response based on the server configuration, request method, target, and other factors. The response is populated with the status code, headers, and body content.
-		bool resolveCGI(const HttpRequest &request, const Location *location, std::string &scriptPath, std::string &interpreterPath) const;
+		bool resolveCGI(const HttpRequest &request, const Location *location, std::string &scriptPath, std::string &interpreterPath);
 
 };
 

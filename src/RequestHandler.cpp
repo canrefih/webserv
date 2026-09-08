@@ -388,7 +388,7 @@ void RequestHandler::setErrorResponse(HttpResponse &response, int statusCode,
 	response.setContentType("text/plain");
 }
 
-bool RequestHandler::resolveCGI(const HttpRequest &request, const Location *location, std::string &scriptPath, std::string &interpreterPath) const
+bool RequestHandler::resolveCGI(const HttpRequest &request, const Location *location, std::string &scriptPath, std::string &interpreterPath)
 {
 	if (location == NULL)
 		return (false);
@@ -413,6 +413,8 @@ bool RequestHandler::resolveCGI(const HttpRequest &request, const Location *loca
 		return (false);
 	std::string extension = path.substr(dot);
 	if (!location->isCgiExtension(extension))
+		return (false);
+	if (!fileExists(path)) // Let a missing script fall through to the normal GET/POST/DELETE path so it gets a proper 404 instead of failing execve() later
 		return (false);
 	scriptPath = path;
 	interpreterPath = location->getCgiInterpreter(extension);

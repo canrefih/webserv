@@ -18,6 +18,20 @@
 #include <netdb.h> // For getaddrinfo
 #include <netinet/in.h> // For sockaddr_in
 
+// Moves every CGI response CGIManager has finished computing (normal completion, error, or timeout) into the normal client write-buffer path, so Server only has to know about HttpResponse strings, not CGI internals
+static void drainCgiReady(CGIManager &cgiManager, std::map<int, std::string> &writeBuffers, std::map<int, bool> &keepAliveMap)
+{
+	int clientFd;
+	std::string response;
+	bool keepAlive;
+
+	while (cgiManager.popReady(clientFd, response, keepAlive))
+	{
+		keepAliveMap[clientFd] = keepAlive;
+		writeBuffers[clientFd] = response;
+	}
+}
+
 Server::Server(const Config &config)
 	: _config(config)
 {
@@ -228,6 +242,9 @@ void Server::run() // Main server loop: Poll for events on listening and client 
 			return;
 		}
 
+		_cgiManager.checkTimeouts(_pollFds); // Kill any CGI script that has been running for too long, every ~1s tick regardless of poll() activity
+		drainCgiReady(_cgiManager, _clientWriteBuffers, _clientKeepAlive);
+
 		if (ready == 0)
 			continue;  // Timeout, again check for g_serverRunning
 
@@ -235,6 +252,18 @@ void Server::run() // Main server loop: Poll for events on listening and client 
 
 		while (i < _pollFds.size()) // Iterate through the poll file descriptors
 		{
+			if (_cgiManager.isCgiFd(_pollFds[i].fd)) // If this fd is a CGI stdin/stdout pipe, route it there instead of treating it as a client socket
+			{
+				std::size_t oldSize = _pollFds.size();
+
+				_cgiManager.handleEvent(_pollFds[i].fd, _pollFds[i].revents, _pollFds);
+				drainCgiReady(_cgiManager, _clientWriteBuffers, _clientKeepAlive);
+
+				if (_pollFds.size() == oldSize)
+					++i;
+				continue;
+			}
+
 			bool isListenSocket = false;
 			const ServerConfig *serverConfig = NULL;
 
@@ -261,24 +290,24 @@ void Server::run() // Main server loop: Poll for events on listening and client 
 			}
 
 			bool removed = false;
+			int clientFd = _pollFds[i].fd;
 
 			if (_pollFds[i].revents & POLLIN) // If the client socket is ready for reading, handle the read event
 			{
-				std::size_t oldSize = _pollFds.size();
-
 				handleClientRead(i);
 
-				if (_pollFds.size() != oldSize)
+				// handleClientRead() can start a CGI, which appends new pollfds (growing the
+				// vector) without touching index i: a size check alone would misread that as
+				// "this client was removed". Checking the fd at i is unaffected by appends.
+				if (i >= _pollFds.size() || _pollFds[i].fd != clientFd)
 					removed = true;
 			}
 
 			if (!removed && (_pollFds[i].revents & POLLOUT)) // If the client socket is ready for writing, handle the write event
 			{
-				std::size_t oldSize = _pollFds.size();
-
 				handleClientWrite(i);
 
-				if (_pollFds.size() != oldSize)
+				if (i >= _pollFds.size() || _pollFds[i].fd != clientFd)
 					removed = true;
 			}
 
@@ -422,9 +451,30 @@ void Server::handleClientRead(std::size_t index)
 	std::cout << "Target:  " << request.getTarget() << std::endl;
 	std::cout << "Version: " << request.getVersion() << std::endl;
 
+	RequestHandler handler(*serverConfig);
+	const Location *location = serverConfig->findLocation(request.getTarget());
+	std::string scriptPath;
+	std::string interpreterPath;
+	bool methodAllowed = (location == NULL || location->isMethodAllowed(request.getMethod()));
+
+	if (methodAllowed && handler.resolveCGI(request, location, scriptPath, interpreterPath)) // Only dispatch to CGI if the location actually allows this method; otherwise fall through to handleRequest()'s normal 405 handling
+	{
+		std::string immediateError;
+
+		if (!_cgiManager.start(clientFd, request, *serverConfig, scriptPath, interpreterPath, _pollFds, immediateError))
+		{
+			_clientWriteBuffers[clientFd] = immediateError;
+			_pollFds[index].events = POLLOUT;
+		}
+		else
+			_pollFds[index].events = 0; // Stop polling the client socket while the CGI script runs
+
+		requestBuffer.clear();
+		return;
+	}
+
 	// Handle the request using the RequestHandler and prepare the response to be sent back to the client
 	HttpResponse response;
-	RequestHandler handler(*serverConfig);
 	handler.handleRequest(request, response);
 
 	std::string connection = request.getHeader("Connection");
@@ -504,6 +554,8 @@ void Server::removeClient(std::size_t index)
 
 	std::cout << "Client disconnected: fd="
 			  << clientFd << std::endl;
+
+	_cgiManager.abortForClient(clientFd, _pollFds); // No-op if no CGI was running for this client
 
 	close(clientFd);
 

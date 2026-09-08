@@ -6,6 +6,7 @@
 #include "HttpRequest.hpp"
 #include "HttpResponse.hpp"
 #include "RequestHandler.hpp"
+#include "CGIManager.hpp"
 
 #include <vector>
 #include <map>
@@ -46,6 +47,8 @@ class Server
 		std::map<int, std::string> _clientWriteBuffers; // Maps client socket file descriptors to their corresponding write buffers
 		std::map<int, const ServerConfig *> _clientServers; // Maps client socket file descriptors to their corresponding server configurations
 		std::map<int, bool> _clientKeepAlive; // Maps client socket file descriptors to their corresponding keep-alive status
+
+		CGIManager _cgiManager; // Owns every in-flight CGI execution (see CGIManager.hpp)
 
 		void createSockets();
 		void setNonBlocking(int fd);
