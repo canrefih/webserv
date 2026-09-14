@@ -1,4 +1,5 @@
 #include "HttpRequest.hpp"
+#include "utils.hpp"
 
 #include <sstream>
 #include <vector>
@@ -102,10 +103,11 @@ std::pair<bool, int> HttpRequest::parse(const std::string &rawRequest)
 		_headers[name] = value;
 	}
 
+	bool is_content_length = _headers.find("content-length") != _headers.end();
+	bool is_transfer_encoding = _headers.find("transfer-encoding") != _headers.end();
+
 	if (_method == "DELETE" || _method == "PUT")
 	{
-		bool is_content_length = _headers.find("content-length") != _headers.end();
-		bool is_transfer_encoding = _headers.find("transfer-encoding") != _headers.end();
 		if (!is_content_length && !is_transfer_encoding)
 			return std::make_pair(false, 411);
 
@@ -128,6 +130,58 @@ std::pair<bool, int> HttpRequest::parse(const std::string &rawRequest)
 				&& std::atoi(it->second.c_str()) != static_cast<int>(_body.size()))
 				return std::make_pair(false, 400);
 		}
+	}
+
+	if (is_transfer_encoding)
+	{
+		const std::string& transfer_encoding = _headers["transfer-encoding"];
+		std::string unchunked_body;
+		unchunked_body.reserve(_body.length());
+
+		if (transfer_encoding == "chunked")
+		{
+			std::stringstream body(_body);
+
+			while (1)
+			{
+				if (!std::getline(body, line))
+					return std::make_pair(false, 400);
+
+				std::size_t content_len = 0;
+
+				if (line.back() == '\r')
+					line.pop_back();
+
+				for (std::string::iterator it = line.begin(); it != line.end(); ++it)
+				{
+					int char_conv = utils::hex_to_val(*it);
+					if (char_conv == -1)
+						return std::make_pair(false, 400);
+					content_len <<= 4;
+					content_len |= char_conv;
+				}
+
+				if (content_len == 0)
+					break;
+
+				if (!std::getline(body, line))
+					return std::make_pair(false, 400);
+
+				if (line.back() == '\r')
+					line.pop_back();
+
+				if (content_len != line.length())
+					return std::make_pair(false, 400);
+
+				unchunked_body += line + '\n';
+			}
+		}
+		else
+			return std::make_pair(false, 501);
+
+		_body = unchunked_body;
+		_headers.erase("transfer-encoding");
+		_headers["content-length"] = utils::to_string(unchunked_body.length());
 	}
 
 	return std::make_pair(true, 400);
