@@ -67,6 +67,8 @@ StringView StringView::substr(StringView::size_type pos, StringView::size_type c
 	return StringView(_buf + pos, count);
 }
 
+std::string StringView::str() const { return std::string(_buf, _len); }
+
 // https://en.cppreference.com/cpp/string/basic_string_view/find
 // All *find* member fonctions share the same overloads.
 // Here is a macro that define automatically all corresponding overloads,

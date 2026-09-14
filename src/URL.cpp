@@ -1,5 +1,6 @@
 #include "URL.hpp"
 #include "utils.hpp"
+#include "lib/StringView.hpp"
 
 #include <sstream>
 #include <cctype>
@@ -34,37 +35,38 @@ std::string URL::getContent() const
 	return _host + _path + _query;
 }
 
-std::pair<URL, bool> URL::createFromRequestTarget(const std::string& s)
+std::pair<URL, bool> URL::createFromRequestTarget(const std::string& src)
 {
 	URL url;
+	StringView s(src);
 
-	if (s.find('#') != std::string::npos)
+	if (s.find('#') != StringView::npos)
 		return std::make_pair(url, false);
 
-	std::string::const_iterator start = s.begin();
-	std::string::const_iterator path_start = start;
+	StringView::const_iterator start = s.begin();
+	StringView::const_iterator path_start = start;
 
 	if (s.substr(0, 4) == "http")
 	{
-		std::string::const_iterator it = start + 4;
+		StringView::const_iterator it = start + 4;
 		if (it != s.end() && *it == 's')
 			++it;
 		if (s.end() - it < 3 || s.substr(it - start, 3) != "://")
 			return std::make_pair(url, false);
 		it += 3;
-		std::string::const_iterator auth_end = std::find(it, s.end(), '/');
-		url._host = s.substr(it - start, auth_end - it);
+		StringView::const_iterator auth_end = std::find(it, s.end(), '/');
+		url._host = s.substr(it - start, auth_end - it).str();
 		path_start = auth_end;
 	}
 	else if (s.empty() || s[0] != '/')
 		return std::make_pair(url, false);
 
-	std::string::const_iterator path_end = std::find(path_start, s.end(), '?');
+	StringView::const_iterator path_end = std::find(path_start, s.end(), '?');
 
 	if (path_end != s.end())
-		url._query = s.substr(path_end - start + 1, s.end() - path_end - 1);
+		url._query = s.substr(path_end - start + 1, s.end() - path_end - 1).str();
 
-	std::string raw_path = s.substr(path_start - start, path_end - path_start);
+	std::string raw_path = s.substr(path_start - start, path_end - path_start).str();
 	if (raw_path.empty())
 		raw_path = "/";
 

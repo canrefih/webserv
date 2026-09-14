@@ -19,6 +19,8 @@ namespace utils
 		return s.str();
 	}
 
+	// Helper function to convert a string to lowercase for case-insensitive header name comparisons
+	std::string toLower(const std::string &str);
 }
 
 

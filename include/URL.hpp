@@ -25,7 +25,7 @@ public:
 	static std::pair<std::string, bool> decode(const std::string& s);
 	static std::pair<std::string, bool> normalize(const std::string& s);
 
-	static std::pair<URL, bool> createFromRequestTarget(const std::string& s);
+	static std::pair<URL, bool> createFromRequestTarget(const std::string& src);
 };
 
 #endif // URL_HPP

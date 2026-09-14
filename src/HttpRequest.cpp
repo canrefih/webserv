@@ -1,5 +1,8 @@
 #include "HttpRequest.hpp"
+#include "lib/StringBuilder.hpp"
+#include "lib/StringView.hpp"
 #include "utils.hpp"
+#include <algorithm>
 
 #include <sstream>
 #include <vector>
@@ -11,20 +14,6 @@ HttpRequest::HttpRequest()
 
 HttpRequest::~HttpRequest()
 {
-}
-
-// Helper function to convert a string to lowercase for case-insensitive header name comparisons
-static std::string toLower(const std::string &str)
-{
-	std::string result = str;
-
-	for (std::size_t i = 0; i < result.size(); ++i)
-	{
-		if (result[i] >= 'A' && result[i] <= 'Z')
-			result[i] = result[i] - 'A' + 'a';
-	}
-
-	return result;
 }
 
 // Parse the raw HTTP request string and populate the HttpRequest object's fields (method, target, version, headers, and body)
@@ -98,7 +87,7 @@ std::pair<bool, int> HttpRequest::parse(const std::string &rawRequest)
 
 		// HTTP header names are case-insensitive.
 		// Store them normalized as lowercase.
-		name = toLower(name);
+		name = utils::toLower(name);
 
 		_headers[name] = value;
 	}
@@ -135,8 +124,8 @@ std::pair<bool, int> HttpRequest::parse(const std::string &rawRequest)
 	if (is_transfer_encoding)
 	{
 		const std::string& transfer_encoding = _headers["transfer-encoding"];
-		std::string unchunked_body;
-		unchunked_body.reserve(_body.length());
+		StringBuilder unchunked_body(_body.length());
+		StringView line_v;
 
 		if (transfer_encoding == "chunked")
 		{
@@ -146,13 +135,14 @@ std::pair<bool, int> HttpRequest::parse(const std::string &rawRequest)
 			{
 				if (!std::getline(body, line))
 					return std::make_pair(false, 400);
+				line_v = line;
 
 				std::size_t content_len = 0;
 
-				if (line.back() == '\r')
-					line.pop_back();
+				if (line_v.back() == '\r')
+					line_v.remove_suffix(1);
 
-				for (std::string::iterator it = line.begin(); it != line.end(); ++it)
+				for (StringView::iterator it = line_v.begin(); it != line_v.end(); ++it)
 				{
 					int char_conv = utils::hex_to_val(*it);
 					if (char_conv == -1)
@@ -166,20 +156,21 @@ std::pair<bool, int> HttpRequest::parse(const std::string &rawRequest)
 
 				if (!std::getline(body, line))
 					return std::make_pair(false, 400);
+				line_v = line;
 
-				if (line.back() == '\r')
-					line.pop_back();
+				if (line_v.back() == '\r')
+					line_v.remove_suffix(1);
 
-				if (content_len != line.length())
+				if (content_len != line_v.length())
 					return std::make_pair(false, 400);
 
-				unchunked_body += line + '\n';
+				unchunked_body << line_v << '\n';
 			}
 		}
 		else
 			return std::make_pair(false, 501);
 
-		_body = unchunked_body;
+		_body = unchunked_body.str();
 		_headers.erase("transfer-encoding");
 		_headers["content-length"] = utils::to_string(unchunked_body.length());
 	}
@@ -213,7 +204,7 @@ const std::string &HttpRequest::getHeader(const std::string &name) const
 	static const std::string empty;
 
 	// Normalize the requested header name as well.
-	std::string lowerName = toLower(name);
+	std::string lowerName = utils::toLower(name);
 
 	std::map<std::string, std::string>::const_iterator it =
 		_headers.find(lowerName);

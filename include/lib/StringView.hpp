@@ -46,6 +46,8 @@ public:
 	size_type length() const;
 	bool empty() const;
 
+	std::string str() const;
+
 	const_iterator begin() const;
 	const_iterator end() const;
 
