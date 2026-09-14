@@ -401,18 +401,14 @@ void Server::handleClientRead(std::size_t index)
 		return;
 
 	HttpRequest request;
-
-	if (!request.parse(requestBuffer)) // If the request parsing fails, we set an error response indicating a bad request (400) and prepare to send it back to the client
 	{
-		HttpResponse response;
-		response.setStatus(400, "Bad Request");
-		response.setBody("Bad Request\n");
-		response.setContentType("text/plain");
-
-		_clientWriteBuffers[clientFd] = response.toString();
-		_pollFds[index].events = POLLOUT;
-		requestBuffer.clear();
-		return;
+		std::pair<bool, int> parsing_result = request.parse(requestBuffer);
+		if (!parsing_result.first)
+		{
+			_clientWriteBuffers[clientFd] = HttpResponse(parsing_result.second).toString();
+			_pollFds[index].events = POLLOUT;
+			requestBuffer.clear();
+		}
 	}
 
 	std::string contentLength = request.getHeader("Content-Length");

@@ -19,7 +19,7 @@ int main()
 		"Connection: keep-alive\r\n"
 		"\r\n";
 
-	if (!request1.parse(rawRequest1))
+	if (!request1.parse(rawRequest1).first)
 	{
 		std::cerr << "FAIL: Request parsing failed" << std::endl;
 		return 1;
@@ -79,7 +79,7 @@ int main()
 		"\r\n"
 		"1234567890";
 
-	if (!request2.parse(rawRequest2))
+	if (!request2.parse(rawRequest2).first)
 	{
 		std::cerr << "FAIL: Mixed-case request parsing failed" << std::endl;
 		return 1;
@@ -236,7 +236,7 @@ int main()
 
 	HttpRequest request3;
 
-	if (request3.parse("INVALID REQUEST\r\n\r\n"))
+	if (request3.parse("INVALID REQUEST\r\n\r\n").first)
 	{
 		std::cerr << "FAIL: Invalid request was accepted" << std::endl;
 		return 1;
@@ -257,7 +257,7 @@ int main()
 		"InvalidHeaderWithoutColon\r\n"
 		"\r\n";
 
-	if (request4.parse(invalidHeaderRequest))
+	if (request4.parse(invalidHeaderRequest).first)
 	{
 		std::cerr << "FAIL: Invalid header was accepted" << std::endl;
 		return 1;
@@ -275,7 +275,7 @@ int main()
 		"\r\n";
 		raw_req += weird_body;
 
-		if (!req.parse(raw_req))
+		if (!req.parse(raw_req).first)
 		{
 			std::cerr << "FAIL: Parsing returned an error." << std::endl;
 			return 1;

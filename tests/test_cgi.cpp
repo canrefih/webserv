@@ -134,7 +134,7 @@ int main()
 			"Host: localhost\r\n"
 			"\r\n";
 
-		if (!req.parse(raw))
+		if (!req.parse(raw).first)
 		{
 			std::cerr << "FAIL: request parse failed" << std::endl;
 			return 1;
@@ -176,7 +176,7 @@ int main()
 			<< "\r\n"
 			<< body;
 
-		if (!req.parse(raw.str()))
+		if (!req.parse(raw.str()).first)
 		{
 			std::cerr << "FAIL: request parse failed" << std::endl;
 			return 1;
@@ -213,7 +213,7 @@ int main()
 			"Host: localhost\r\n"
 			"\r\n";
 
-		if (!req.parse(raw))
+		if (!req.parse(raw).first)
 		{
 			std::cerr << "FAIL: request parse failed" << std::endl;
 			return 1;
@@ -243,7 +243,7 @@ int main()
 			"Host: localhost\r\n"
 			"\r\n";
 
-		if (!req.parse(raw))
+		if (!req.parse(raw).first)
 		{
 			std::cerr << "FAIL: request parse failed" << std::endl;
 			return 1;

@@ -3,6 +3,7 @@
 
 #include <string>
 #include <map>
+#include <utility>
 #include "URL.hpp"
 
 /**
@@ -27,7 +28,8 @@ class HttpRequest
 		HttpRequest();
 		~HttpRequest();
 
-		bool parse(const std::string &rawRequest);
+		// return {true, 200} if parsing succeed, or {false, <StatusCode>} if parsing failed
+		std::pair<bool, int> parse(const std::string &rawRequest);
 
 		const std::string &getMethod() const; // Returns the HTTP method (e.g., GET, POST) of the request
 		const URL &getTarget() const; // Returns the target url of the request (e.g., /index.html)

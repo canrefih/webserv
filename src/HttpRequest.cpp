@@ -27,13 +27,13 @@ static std::string toLower(const std::string &str)
 }
 
 // Parse the raw HTTP request string and populate the HttpRequest object's fields (method, target, version, headers, and body)
-bool HttpRequest::parse(const std::string &rawRequest)
+std::pair<bool, int> HttpRequest::parse(const std::string &rawRequest)
 {
 	std::istringstream stream(rawRequest);
 	std::string line;
 
 	if (!std::getline(stream, line))
-		return false;
+		return std::make_pair(false, 400);
 
 	// Remove trailing '\r' from CRLF
 	if (!line.empty() && line[line.size() - 1] == '\r')
@@ -45,7 +45,7 @@ bool HttpRequest::parse(const std::string &rawRequest)
 	std::string raw_target;
 
 	if (!(requestLine >> _method >> raw_target >> _version))
-		return false;
+		return std::make_pair(false, 400);
 
 	// Parse Http version
 	{
@@ -56,17 +56,20 @@ bool HttpRequest::parse(const std::string &rawRequest)
 		    || !std::isdigit(static_cast<unsigned char>(ver[0]))
 		    || ver[1] != '.'
 		    || !std::isdigit(static_cast<unsigned char>(ver[2])))
-		    return false;
+			return std::make_pair(false, 400);
 
 		for (size_t i = 3; i < ver.length(); ++i)
-		    if (!std::isdigit(static_cast<unsigned char>(ver[i]))) return false;
+		{
+		    if (!std::isdigit(static_cast<unsigned char>(ver[i])))
+				return std::make_pair(false, 400);
+		}
 	}
 
 	std::pair<URL, bool> url_parsed = URL::createFromRequestTarget(raw_target);
 
 	// check if URL is malformed
 	if (!url_parsed.second)
-		return false;
+		return std::make_pair(false, 400);
 
 	_target = url_parsed.first;
 
@@ -83,7 +86,7 @@ bool HttpRequest::parse(const std::string &rawRequest)
 		std::size_t colon = line.find(':');
 
 		if (colon == std::string::npos)
-			return false;
+			return std::make_pair(false, 400);
 
 		std::string name = line.substr(0, colon);
 		std::string value = line.substr(colon + 1);
@@ -104,12 +107,12 @@ bool HttpRequest::parse(const std::string &rawRequest)
 		bool is_content_length = _headers.find("content-length") != _headers.end();
 		bool is_transfer_encoding = _headers.find("transfer-encoding") != _headers.end();
 		if (!is_content_length && !is_transfer_encoding)
-			return false; // TODO: return 411 Length Required
+			return std::make_pair(false, 411);
 
 		// case of error is XNOR exists("content-length") with exists("transfer-encoding") 
 		// there should be at least one, but not both
 		if (is_content_length == is_transfer_encoding)
-			return false;
+			return std::make_pair(false, 400);
 	}
 
 	// Read body
@@ -123,11 +126,11 @@ bool HttpRequest::parse(const std::string &rawRequest)
 			std::map<std::string, std::string>::iterator it = _headers.find("content-length");
 			if (it != _headers.end()
 				&& std::atoi(it->second.c_str()) != static_cast<int>(_body.size()))
-				return false;
+				return std::make_pair(false, 400);
 		}
 	}
 
-	return true;
+	return std::make_pair(true, 400);
 }
 
 const std::string &HttpRequest::getMethod() const
