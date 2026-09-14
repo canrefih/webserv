@@ -1,6 +1,8 @@
 #include "HttpRequest.hpp"
 
 #include <sstream>
+#include <vector>
+#include <cstdlib>
 
 HttpRequest::HttpRequest()
 {
@@ -45,6 +47,21 @@ bool HttpRequest::parse(const std::string &rawRequest)
 	if (!(requestLine >> _method >> raw_target >> _version))
 		return false;
 
+	// Parse Http version
+	{
+		std::size_t slash = _version.find("/");
+
+		std::string ver = _version.substr(slash + 1);
+		if (ver.length() < 3 
+		    || !std::isdigit(static_cast<unsigned char>(ver[0]))
+		    || ver[1] != '.'
+		    || !std::isdigit(static_cast<unsigned char>(ver[2])))
+		    return false;
+
+		for (size_t i = 3; i < ver.length(); ++i)
+		    if (!std::isdigit(static_cast<unsigned char>(ver[i]))) return false;
+	}
+
 	std::pair<URL, bool> url_parsed = URL::createFromRequestTarget(raw_target);
 
 	// check if URL is malformed
@@ -82,11 +99,33 @@ bool HttpRequest::parse(const std::string &rawRequest)
 		_headers[name] = value;
 	}
 
-	// Read body
-	std::string remaining;
-	std::getline(stream, remaining, '\0');
+	if (_method == "DELETE" || _method == "PUT")
+	{
+		bool is_content_length = _headers.find("content-length") != _headers.end();
+		bool is_transfer_encoding = _headers.find("transfer-encoding") != _headers.end();
+		if (!is_content_length && !is_transfer_encoding)
+			return false; // TODO: return 411 Length Required
 
-	_body = remaining;
+		// case of error is XNOR exists("content-length") with exists("transfer-encoding") 
+		// there should be at least one, but not both
+		if (is_content_length == is_transfer_encoding)
+			return false;
+	}
+
+	// Read body
+	std::size_t headerEnd = rawRequest.find("\r\n\r\n");
+	if (headerEnd != std::string::npos)
+	{
+		_body = rawRequest.substr(headerEnd + 4);
+
+		{
+			// the body length should be the content-length if provided
+			std::map<std::string, std::string>::iterator it = _headers.find("content-length");
+			if (it != _headers.end()
+				&& std::atoi(it->second.c_str()) != static_cast<int>(_body.size()))
+				return false;
+		}
+	}
 
 	return true;
 }

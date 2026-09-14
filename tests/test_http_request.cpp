@@ -222,6 +222,8 @@ int main()
 	if (request2.getBody() != "1234567890")
 	{
 		std::cerr << "FAIL: Request body incorrect" << std::endl;
+		std::cerr << "Body content = \"" << request2.getBody() << "\"" << std::endl;
+		std::cerr << "expected length " << sizeof("1234567890") << ", got " << request2.getBody().length() << std::endl;
 		return 1;
 	}
 
@@ -262,6 +264,31 @@ int main()
 	}
 
 	std::cout << "PASS: Invalid header rejected" << std::endl;
+
+	std::cout << "\nTest 9: Null characters in body..." << std::endl;
+	{
+		std::string weird_body("i love cats\0 and chicken\r\n\0badibou\r\n");
+		HttpRequest req;
+		std::string raw_req =
+		"GET / HTTP/1.1\r\n"
+		"Host: localhost\r\n"
+		"\r\n";
+		raw_req += weird_body;
+
+		if (!req.parse(raw_req))
+		{
+			std::cerr << "FAIL: Parsing returned an error." << std::endl;
+			return 1;
+		}
+		if (weird_body.length() != req.getBody().length())
+		{
+			std::cerr << "FAIL: Parsed body did stop at null character" << std::endl;
+			std::cerr << "expected body length: " << weird_body.size() << ", got " << req.getBody().size() << std::endl;
+			std::cerr << "parsed body: \"" << req.getBody() << "\n" << std::endl;
+			std::cerr << "expected body: \"" << weird_body << "\n" << std::endl;
+			return 1;
+		}
+	}
 
 	// ---------------------------------------------------------
 	// Final result
