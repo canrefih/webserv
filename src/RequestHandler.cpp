@@ -380,9 +380,6 @@ bool RequestHandler::resolveCGI(const HttpRequest &request, const Location *loca
 	std::string::size_type qPos = target.find('?');
 	std::string targetPath = (qPos == std::string::npos) ? target : target.substr(0, qPos);
 
-	if (targetPath.find("..") != std::string::npos) // Prevent directory traversal attacks, same check as GET/DELETE
-		return (false);
-
 	std::string root = location->getRoot();
 	std::string locationPath = location->getPath();
 	std::string relativePath = targetPath.substr(locationPath.size());
