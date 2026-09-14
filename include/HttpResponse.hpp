@@ -25,6 +25,8 @@ class HttpResponse
 		HttpResponse();
 		~HttpResponse();
 
+		HttpResponse(int statusCode);
+
 		static std::string reasonPhrase(int code);
 
 		void setStatus(int code, const std::string &text); // Set the HTTP status code and corresponding status text (e.g., 200 OK, 404 Not Found)

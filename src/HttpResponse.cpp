@@ -14,6 +14,10 @@ HttpResponse::~HttpResponse()
 {
 }
 
+HttpResponse::HttpResponse(int statusCode)
+	: _statusCode(statusCode),
+	  _statusText(reasonPhrase(statusCode)) {}
+
 void HttpResponse::setStatus(int code, const std::string &text) // Set the HTTP status code and corresponding status text (e.g., 200 OK, 404 Not Found)
 {
 	_statusCode = code;
