@@ -22,7 +22,8 @@ SRCS = $(LIB_SRCS) \
        src/CGIHandler.cpp \
        src/CGIEnvBuilder.cpp \
        src/CGIManager.cpp \
-       src/URL.cpp
+       src/URL.cpp \
+       src/utils.cpp
 
 TESTS_SRCS = tests/test_config_parsing.cpp\
 		tests/test_http_request.cpp\

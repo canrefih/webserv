@@ -1,4 +1,5 @@
 #include "URL.hpp"
+#include "utils.hpp"
 
 #include <sstream>
 #include <cctype>
@@ -107,17 +108,6 @@ std::string URL::encode(const std::string& s)
 	return res;
 }
 
-static int hex_to_val(char c)
-{
-	if (c >= '0' && c <= '9')
-		return c - '0';
-	if (c >= 'a' && c <= 'f')
-		return c - 'a' + 10;
-	if (c >= 'A' && c <= 'F')
-		return c - 'A' + 10;
-	return -1;
-}
-
 std::pair<std::string, bool> URL::decode(const std::string& s)
 {
 	std::string res;
@@ -136,13 +126,13 @@ std::pair<std::string, bool> URL::decode(const std::string& s)
 		{
 			if (++it == s.end())
 				return std::make_pair("", false);
-			tmp = hex_to_val(*it);
+			tmp = utils::hex_to_val(*it);
 			if (tmp == -1)
 				return std::make_pair("", false);
 			percent_code = tmp << 4;
 			if (++it == s.end())
 				return std::make_pair("", false);
-			tmp = hex_to_val(*it);
+			tmp = utils::hex_to_val(*it);
 			if (tmp == -1)
 				return std::make_pair("", false);
 			percent_code |= tmp;
