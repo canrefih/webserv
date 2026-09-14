@@ -383,14 +383,20 @@ bool RequestHandler::resolveCGI(const HttpRequest &request, const Location *loca
 	if (targetPath.find("..") != std::string::npos) // Prevent directory traversal attacks, same check as GET/DELETE
 		return (false);
 
-	std::string root = location->getRoot();
-	std::string locationPath = location->getPath();
-	std::string relativePath = targetPath.substr(locationPath.size());
+	std::string path;
 
-	if (relativePath.empty())
-		relativePath = "/";
+	if (!location->getRoot().empty())
+	{
+		std::string locationPath = location->getPath();
+		std::string relativePath = targetPath.substr(locationPath.size());
 
-	std::string path = root + relativePath;
+		if (relativePath.empty())
+			relativePath = "/";
+
+		path = location->getRoot() + relativePath;
+	}
+	else
+		path = _serverConfig.getRoot() + targetPath;
 	std::size_t dot = path.find_last_of('.');
 	if (dot == std::string::npos)
 		return (false);
