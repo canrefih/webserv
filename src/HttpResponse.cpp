@@ -30,7 +30,7 @@ void HttpResponse::setContentType(const std::string &contentType)
 }
 
 // Convert the HTTP response object into a raw HTTP response string, including the status line, headers, and body, ready to be sent over the network
-std::string HttpResponse::toString() const 
+std::string HttpResponse::toString() const
 {
 	std::ostringstream response;
 
@@ -63,4 +63,16 @@ std::string HttpResponse::toString() const
 void HttpResponse::setHeader(const std::string &name, const std::string &value)
 {
     _customHeaders[name] = value;
+}
+/*Need it because we calculate cookies early  and we need to take it back to put it
+in _pendindCgiCookies while is waitinf CGI response because asymcrone*/
+const std::string &HttpResponse::getHeader(const std::string &name) const
+{
+	static const std::string empty;
+	std::map<std::string, std::string>::const_iterator it = _customHeaders.find(name);
+
+	if (it == _customHeaders.end())
+		return (empty);
+
+	return (it->second);
 }

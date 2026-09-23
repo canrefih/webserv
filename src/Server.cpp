@@ -19,7 +19,7 @@
 #include <netinet/in.h> // For sockaddr_in
 
 // Moves every CGI response CGIManager has finished computing (normal completion, error, or timeout) into the normal client write-buffer path, so Server only has to know about HttpResponse strings, not CGI internals
-static void drainCgiReady(CGIManager &cgiManager, std::map<int, std::string> &writeBuffers, std::map<int, bool> &keepAliveMap)
+static void drainCgiReady(CGIManager &cgiManager, std::map<int, std::string> &writeBuffers, std::map<int, bool> &keepAliveMap, std::map<int, std::string> &pendingCgiCookies)
 {
 	int clientFd;
 	std::string response;
@@ -28,6 +28,17 @@ static void drainCgiReady(CGIManager &cgiManager, std::map<int, std::string> &wr
 	while (cgiManager.popReady(clientFd, response, keepAlive))
 	{
 		keepAliveMap[clientFd] = keepAlive;
+		std::map<int, std::string>::iterator cookieIt = pendingCgiCookies.find(clientFd);
+
+		if (cookieIt != pendingCgiCookies.end())
+		{
+			std::size_t headerEnd = response.find("\r\n\r\n");
+
+			if (headerEnd != std::string::npos)
+				response.insert(headerEnd, "\r\nSet-Cookie: " + cookieIt->second);
+			pendingCgiCookies.erase(cookieIt);
+		}
+
 		writeBuffers[clientFd] = response;
 	}
 }
@@ -243,7 +254,7 @@ void Server::run() // Main server loop: Poll for events on listening and client 
 		}
 
 		_cgiManager.checkTimeouts(_pollFds); // Kill any CGI script that has been running for too long, every ~1s tick regardless of poll() activity
-		drainCgiReady(_cgiManager, _clientWriteBuffers, _clientKeepAlive);
+		drainCgiReady(_cgiManager, _clientWriteBuffers, _clientKeepAlive, _pendingCgiCookies);
 
 		if (ready == 0)
 			continue;  // Timeout, again check for g_serverRunning
@@ -257,7 +268,7 @@ void Server::run() // Main server loop: Poll for events on listening and client 
 				std::size_t oldSize = _pollFds.size();
 
 				_cgiManager.handleEvent(_pollFds[i].fd, _pollFds[i].revents, _pollFds);
-				drainCgiReady(_cgiManager, _clientWriteBuffers, _clientKeepAlive);
+				drainCgiReady(_cgiManager, _clientWriteBuffers, _clientKeepAlive, _pendingCgiCookies);
 
 				if (_pollFds.size() == oldSize)
 					++i;
@@ -457,9 +468,16 @@ void Server::handleClientRead(std::size_t index)
 	std::string interpreterPath;
 	bool methodAllowed = (location == NULL || location->isMethodAllowed(request.getMethod()));
 
+	HttpResponse response;
+	_cookiesSession.getCreateSession(request, response);
+
 	if (methodAllowed && handler.resolveCGI(request, location, scriptPath, interpreterPath)) // Only dispatch to CGI if the location actually allows this method; otherwise fall through to handleRequest()'s normal 405 handling
 	{
 		std::string immediateError;
+		const std::string &setCookie = response.getHeader("Set-Cookie");
+
+		if (!setCookie.empty()) // Hand off the cookie decided above so drainCgiReady() can splice it into the CGI response once it's ready (see there for why it can't be applied right now)
+			_pendingCgiCookies[clientFd] = setCookie;
 
 		if (!_cgiManager.start(clientFd, request, *serverConfig, scriptPath, interpreterPath, _pollFds, immediateError))
 		{
@@ -474,7 +492,6 @@ void Server::handleClientRead(std::size_t index)
 	}
 
 	// Handle the request using the RequestHandler and prepare the response to be sent back to the client
-	HttpResponse response;
 	handler.handleRequest(request, response);
 
 	std::string connection = request.getHeader("Connection");
@@ -563,6 +580,7 @@ void Server::removeClient(std::size_t index)
 	_clientWriteBuffers.erase(clientFd);
 	_clientServers.erase(clientFd);
 	_clientKeepAlive.erase(clientFd);
+	_pendingCgiCookies.erase(clientFd); // Avoid leaking this client's cookie to whoever the OS hands this fd to next
 
 	_pollFds.erase(_pollFds.begin() + index);
 }
