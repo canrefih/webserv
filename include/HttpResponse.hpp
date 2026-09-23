@@ -33,6 +33,7 @@ class HttpResponse
 		void setBody(const std::string &body); // Set the body of the HTTP response, which contains the actual content to be sent to the client
 		void setContentType(const std::string &contentType); // Set the Content-Type header of the HTTP response, indicating the media type of the response body (e.g., text/html, application/json)
 		void setHeader(const std::string &name, const std::string &value); // Set a custom header for the HTTP response, allowing the addition of any header not covered by the other methods (e.g., X-Custom-Header)
+		const std::string &getHeader(const std::string &name) const; // Returns the value of a custom header previously set with setHeader, or an empty string if it was never set
 
 		std::string toString() const; // Convert the HTTP response object into a raw HTTP response string, including the status line, headers, and body, ready to be sent over the network
 };

@@ -384,10 +384,20 @@ bool RequestHandler::resolveCGI(const HttpRequest &request, const Location *loca
 	std::string locationPath = location->getPath();
 	std::string relativePath = targetPath.substr(locationPath.size());
 
-	if (relativePath.empty())
-		relativePath = "/";
+	std::string path;
 
-	std::string path = root + relativePath;
+	if (!location->getRoot().empty())
+	{
+		std::string locationPath = location->getPath();
+		std::string relativePath = targetPath.substr(locationPath.size());
+
+		if (relativePath.empty())
+			relativePath = "/";
+
+		path = location->getRoot() + relativePath;
+	}
+	else
+		path = _serverConfig.getRoot() + targetPath;
 	std::size_t dot = path.find_last_of('.');
 	if (dot == std::string::npos)
 		return (false);

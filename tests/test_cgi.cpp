@@ -22,7 +22,7 @@ static bool runCGI(const std::string &scriptPath, const std::string &interpreter
 					const HttpRequest &request, const std::string &serverName, int serverPort,
 					std::string &output, int &exitCode)
 {
-	std::vector<std::string> env = buildCGIEnv(request, serverName, serverPort);
+	std::vector<std::string> env = buildCGIEnv(request, serverName, serverPort, scriptPath);
 
 	CGIHandler cgi;
 	cgi.setup(scriptPath, interpreter, env);

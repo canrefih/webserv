@@ -5,7 +5,17 @@
 #include <sstream>
 #include <cstdlib>
 #include <cerrno>
+#include <cctype>
 #include <unistd.h>
+
+static std::string toLower(const std::string &str)
+{
+	std::string result = str;
+
+	for (std::size_t i = 0; i < result.size(); i++)
+		result[i] = static_cast<char>(std::tolower(static_cast<unsigned char>(result[i])));
+	return (result);
+}
 
 CGIManager::CGIManager( void )
 {
@@ -64,7 +74,7 @@ bool	CGIManager::start(int clientFd, const HttpRequest &request, const ServerCon
 						  const std::string &scriptPath, const std::string &interpreterPath,
 						  std::vector<pollfd> &pollFds, std::string &immediateErrorResponse)
 {
-	std::vector<std::string> env = buildCGIEnv(request, serverConfig.getHost(), serverConfig.getPort());
+	std::vector<std::string> env = buildCGIEnv(request, serverConfig.getHost(), serverConfig.getPort(), scriptPath);
 	CGIHandler *cgi = new CGIHandler();
 
 	cgi->setup(scriptPath, interpreterPath, env);
@@ -197,7 +207,7 @@ void	CGIManager::finish(int clientFd, CgiSession *session, std::vector<pollfd> &
 
 	HttpResponse response;
 
-	if (reaped > 0 && exitCode != 0 && session->output.empty())
+	if (reaped > 0 && exitCode != 0)
 	{
 		response.setStatus(502, "Bad Gateway");
 		response.setBody("Bad Gateway\n");
@@ -238,11 +248,12 @@ void	CGIManager::finish(int clientFd, CgiSession *session, std::vector<pollfd> &
 
 			std::string name = line.substr(0, colon);
 			std::string value = line.substr(colon + 1);
+			std::string lowerName = toLower(name);
 
 			while (!value.empty() && value[0] == ' ')
 				value.erase(0, 1);
 
-			if (name == "Status")
+			if (lowerName == "status")
 			{
 				int code = std::atoi(value.c_str());
 				std::string text = value;
@@ -253,7 +264,7 @@ void	CGIManager::finish(int clientFd, CgiSession *session, std::vector<pollfd> &
 
 				response.setStatus(code, text);
 			}
-			else if (name == "Content-Type")
+			else if (lowerName == "content-type")
 				response.setContentType(value);
 			else
 				response.setHeader(name, value);

@@ -23,7 +23,8 @@ SRCS = $(LIB_SRCS) \
        src/CGIEnvBuilder.cpp \
        src/CGIManager.cpp \
        src/URL.cpp \
-       src/utils.cpp
+       src/utils.cpp \
+       src/CookiesSession.cpp
 
 TESTS_SRCS = tests/test_config_parsing.cpp\
 		tests/test_http_request.cpp\
