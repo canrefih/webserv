@@ -30,7 +30,13 @@ TESTS_SRCS = tests/test_config_parsing.cpp\
 		tests/test_multi_socket.cpp\
 		tests/test_signal_handling.cpp\
 		tests/test_timeout_protection.cpp\
-		tests/test_url.cpp
+		tests/test_url.cpp\
+		tests/test_cgi_env_builder.cpp\
+		tests/test_cgi_manager.cpp\
+		tests/test_config_invalid.cpp\
+		tests/test_request_handler.cpp\
+		tests/test_cookies_session.cpp\
+		tests/new_test.cpp
 
 OBJS = $(SRCS:src/%.cpp=obj/%.o)
 DEPS = $(OBJS:.o=.d)

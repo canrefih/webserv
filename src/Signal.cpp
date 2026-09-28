@@ -12,4 +12,5 @@ void setupSignalHandlers()
 {
 	signal(SIGINT, signalHandler);
 	signal(SIGTERM, signalHandler);
+	signal(SIGPIPE, SIG_IGN);
 }

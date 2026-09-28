@@ -1,5 +1,6 @@
 #include "../include/Config.hpp"
 #include "../include/Server.hpp"
+#include "../include/Signal.hpp"
 #include <iostream>
 #include <unistd.h>
 #include <signal.h>
@@ -90,9 +91,7 @@ int main()
 	if (pid == 0)
 	{
 		// Child process
-		signal(SIGTERM, SIG_DFL);
-		signal(SIGINT, SIG_DFL);
-		
+		setupSignalHandlers();
 		server.run();
 		exit(0);
 	}
@@ -105,7 +104,21 @@ int main()
 		
 		// Cleanup
 		kill(pid, SIGTERM);
-		wait(NULL);
+
+		int status;
+		if (waitpid(pid, &status, 0) == -1)
+		{
+			std::cerr << "FAIL: waitpid failed" << std::endl;
+			return 1;
+		}
+
+		if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
+		{
+			std::cerr << "FAIL: Server did not exit gracefully" << std::endl;
+			return 1;
+		}
+
+		std::cout << "PASS: Server exited gracefully" << std::endl;
 	}
 	else
 	{

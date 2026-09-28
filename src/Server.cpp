@@ -17,6 +17,23 @@
 #include <sys/socket.h> // For socket functions
 #include <netdb.h> // For getaddrinfo
 #include <netinet/in.h> // For sockaddr_in
+#include <climits>
+#include <limits>
+
+Server::Server(const Config &config)
+	: _config(config)
+{
+}
+
+Server::~Server() // Destructor: Close all listening sockets
+{
+	std::vector<int>::iterator it;
+	for (it = _listenFds.begin(); it != _listenFds.end(); ++it)
+	{
+		if (*it != -1)
+			close(*it);
+	}
+}
 
 // Moves every CGI response CGIManager has finished computing (normal completion, error, or timeout) into the normal client write-buffer path, so Server only has to know about HttpResponse strings, not CGI internals
 static void drainCgiReady(CGIManager &cgiManager, std::map<int, std::string> &writeBuffers, std::map<int, bool> &keepAliveMap, std::map<int, std::string> &pendingCgiCookies)
@@ -43,19 +60,194 @@ static void drainCgiReady(CGIManager &cgiManager, std::map<int, std::string> &wr
 	}
 }
 
-Server::Server(const Config &config)
-	: _config(config)
+static bool parseContentLength(
+    const std::string &value,
+    std::size_t &result)
 {
+    if (value.empty())
+        return false;
+
+    result = 0;
+
+    for (std::size_t i = 0; i < value.size(); ++i)
+    {
+        char c = value[i];
+
+        if (c < '0' || c > '9')
+            return false;
+
+        std::size_t digit =
+            static_cast<std::size_t>(c - '0');
+
+        if (result >
+            (std::numeric_limits<std::size_t>::max() - digit) / 10)
+        {
+            return false;
+        }
+
+        result = result * 10 + digit;
+    }
+
+    return true;
 }
 
-Server::~Server() // Destructor: Close all listening sockets
+Server::ChunkParseResult Server::decodeChunkedBody(
+    const std::string &buffer,
+    std::size_t bodyStart,
+    std::size_t maxBodySize,
+    std::string &decodedBody,
+    std::size_t &consumed)
 {
-	std::vector<int>::iterator it;
-	for (it = _listenFds.begin(); it != _listenFds.end(); ++it)
-	{
-		if (*it != -1)
-			close(*it);
-	}
+    decodedBody.clear();
+    consumed = 0;
+
+    std::size_t pos = bodyStart;
+
+    while (true)
+    {
+        /*
+         * Chunk-size line must end with CRLF.
+         */
+        std::size_t lineEnd = buffer.find("\r\n", pos);
+
+        if (lineEnd == std::string::npos)
+            return CHUNK_INCOMPLETE;
+
+        std::string sizeLine = buffer.substr(pos, lineEnd - pos);
+
+        /*
+         * Ignore chunk extensions:
+         *
+         *   5;foo=bar
+         *
+         * is treated as size 5.
+         */
+        std::size_t semicolon = sizeLine.find(';');
+
+        if (semicolon != std::string::npos)
+            sizeLine.erase(semicolon);
+
+        if (sizeLine.empty())
+            return CHUNK_ERROR;
+
+        unsigned long chunkSize = 0;
+
+        for (std::size_t i = 0; i < sizeLine.size(); ++i)
+        {
+            char c = sizeLine[i];
+            unsigned long digit;
+
+            if (c >= '0' && c <= '9')
+                digit = static_cast<unsigned long>(c - '0');
+            else if (c >= 'a' && c <= 'f')
+                digit = static_cast<unsigned long>(c - 'a' + 10);
+            else if (c >= 'A' && c <= 'F')
+                digit = static_cast<unsigned long>(c - 'A' + 10);
+            else
+                return CHUNK_ERROR;
+
+            /*
+             * Detect unsigned long overflow before:
+             *
+             * chunkSize = chunkSize * 16 + digit
+             */
+            if (chunkSize > (ULONG_MAX - digit) / 16)
+                return CHUNK_ERROR;
+
+            chunkSize = chunkSize * 16 + digit;
+        }
+
+        /*
+         * Move past the chunk-size CRLF.
+         */
+        pos = lineEnd + 2;
+
+        /*
+         * Last chunk.
+         */
+        if (chunkSize == 0)
+        {
+            /*
+             * After the 0-size chunk there may be trailers.
+             *
+             * No trailers:
+             *
+             *   0\r\n
+             *   \r\n
+             *
+             * With trailers:
+             *
+             *   0\r\n
+             *   Foo: bar\r\n
+             *   \r\n
+             */
+            std::size_t trailerEnd = buffer.find("\r\n\r\n", pos);
+
+            if (trailerEnd == std::string::npos)
+            {
+                /*
+                 * Special case: immediately after 0\r\n,
+                 * the final empty trailer section is just CRLF.
+                 */
+                if (buffer.size() >= pos + 2 &&
+                    buffer.compare(pos, 2, "\r\n") == 0)
+                {
+                    consumed = pos + 2;
+                    return CHUNK_COMPLETE;
+                }
+
+                return CHUNK_INCOMPLETE;
+            }
+
+            consumed = trailerEnd + 4;
+            return CHUNK_COMPLETE;
+        }
+
+		/*
+		* We already know that this chunk alone exceeds the
+		* configured maximum request body size.
+		*
+		* Do not wait for the rest of an impossible request.
+		*/
+		if (chunkSize > static_cast<unsigned long>(maxBodySize))
+			return CHUNK_TOO_LARGE;
+
+		/*
+		* The chunk is valid in size, but the TCP stream does not
+		* contain the complete chunk yet.
+		*/
+		if (chunkSize > static_cast<unsigned long>(buffer.size() - pos))
+			return CHUNK_INCOMPLETE;
+
+        /*
+         * Prevent the conversion to std::size_t from wrapping.
+         */
+        if (chunkSize > static_cast<unsigned long>(std::string::npos))
+            return CHUNK_ERROR;
+
+        std::size_t dataSize = static_cast<std::size_t>(chunkSize);
+
+		if (decodedBody.size() >
+			maxBodySize - dataSize)
+		{
+			return CHUNK_TOO_LARGE;
+		}
+
+        decodedBody.append(buffer, pos, dataSize);
+
+        pos += dataSize;
+
+        /*
+         * Every chunk-data section must be followed by CRLF.
+         */
+        if (buffer.size() < pos + 2)
+            return CHUNK_INCOMPLETE;
+
+        if (buffer.compare(pos, 2, "\r\n") != 0)
+            return CHUNK_ERROR;
+
+        pos += 2;
+    }
 }
 
 void Server::setNonBlocking(int fd) // Set a socket to non-blocking mode
@@ -338,11 +530,20 @@ void Server::run() // Main server loop: Poll for events on listening and client 
 	}
 
 	std::map<int, std::string>::iterator bufferIt;
-	for (bufferIt = _clientBuffers.begin(); bufferIt != _clientBuffers.end(); ++bufferIt)
+	for (bufferIt = _clientBuffers.begin();
+		bufferIt != _clientBuffers.end();
+		++bufferIt)
 	{
 		if (bufferIt->first != -1)
 			close(bufferIt->first);
 	}
+
+	_clientBuffers.clear();
+	_clientWriteBuffers.clear();
+	_clientServers.clear();
+	_clientKeepAlive.clear();
+	_pendingCgiCookies.clear();
+	_pollFds.clear();
 
 	std::cout << "Server stopped" << std::endl;
 }
@@ -413,7 +614,7 @@ void Server::handleClientRead(std::size_t index)
 
 	HttpRequest request;
 
-	if (!request.parse(requestBuffer)) // If the request parsing fails, we set an error response indicating a bad request (400) and prepare to send it back to the client
+	if (!request.parse(requestBuffer))
 	{
 		HttpResponse response;
 		response.setStatus(400, "Bad Request");
@@ -426,19 +627,177 @@ void Server::handleClientRead(std::size_t index)
 		return;
 	}
 
-	std::string contentLength = request.getHeader("Content-Length");
+	if (request.getVersion() != "HTTP/1.1")
+	{
+		HttpResponse response;
+		response.setStatus(505, "HTTP Version Not Supported");
+		response.setBody("HTTP Version Not Supported\n");
+		response.setContentType("text/plain");
+
+		_clientWriteBuffers[clientFd] = response.toString();
+		_pollFds[index].events = POLLOUT;
+		requestBuffer.clear();
+		return;
+	}
+
+	if (request.hasDuplicateContentLength())
+	{
+		HttpResponse response;
+		response.setStatus(400, "Bad Request");
+		response.setBody("Bad Request\n");
+		response.setContentType("text/plain");
+
+		_clientWriteBuffers[clientFd] = response.toString();
+		_pollFds[index].events = POLLOUT;
+		requestBuffer.clear();
+		return;
+	}
+
 	const ServerConfig *serverConfig = _clientServers[clientFd];
 
-	/*
-		If the request has a Content-Length header, we check if the body size exceeds the maximum allowed size for the server configuration.
-		If it does, we set an error response indicating that the payload is too large (413) and prepare to send it back to the client.
-		If the body is not fully received yet, we return and wait for more data to arrive.
-	*/
-	if (!contentLength.empty())
-	{
-		std::size_t expectedBodyLength = std::atoi(contentLength.c_str());
+	std::string transferEncoding =
+		request.getHeader("Transfer-Encoding");
 
-		if (expectedBodyLength > serverConfig->getClientMaxBodySize())
+	std::string contentLength =
+			request.getHeader("Content-Length");
+
+		if (request.getMethod() == "POST" &&
+		transferEncoding.empty() &&
+		contentLength.empty())
+	{
+		HttpResponse response;
+		response.setStatus(411, "Length Required");
+		response.setBody("Length Required\n");
+		response.setContentType("text/plain");
+
+		_clientWriteBuffers[clientFd] = response.toString();
+		_pollFds[index].events = POLLOUT;
+		requestBuffer.clear();
+		return;
+	}
+
+	/*
+	* HTTP request framing.
+	*
+	* Transfer-Encoding: chunked takes precedence as the
+	* request body framing mechanism. We reject a request
+	* containing both headers rather than trying to interpret
+	* two conflicting framing rules.
+	*/
+	if (!transferEncoding.empty() &&
+		!contentLength.empty())
+	{
+		HttpResponse response;
+		response.setStatus(400, "Bad Request");
+		response.setBody("Bad Request\n");
+		response.setContentType("text/plain");
+
+		_clientWriteBuffers[clientFd] = response.toString();
+		_pollFds[index].events = POLLOUT;
+		requestBuffer.clear();
+		return;
+	}
+
+	if (!transferEncoding.empty() &&
+    	transferEncoding != "chunked")
+	{
+		HttpResponse response;
+		response.setStatus(400, "Bad Request");
+		response.setBody("Bad Request\n");
+		response.setContentType("text/plain");
+		_clientWriteBuffers[clientFd] = response.toString();
+		_pollFds[index].events = POLLOUT;
+		requestBuffer.clear();
+		return;
+	}
+
+	if (transferEncoding == "chunked")
+	{
+		std::string decodedBody;
+		std::size_t consumed = 0;
+
+		ChunkParseResult chunkResult =
+			decodeChunkedBody(
+				requestBuffer,
+				headerEnd + 4,
+				serverConfig->getClientMaxBodySize(),
+				decodedBody,
+				consumed);
+
+		if (chunkResult == CHUNK_INCOMPLETE)
+			return;
+
+		if (chunkResult == CHUNK_TOO_LARGE)
+		{
+			HttpResponse response;
+			response.setStatus(413, "Payload Too Large");
+			response.setBody("Payload Too Large\n");
+			response.setContentType("text/plain");
+
+			_clientWriteBuffers[clientFd] = response.toString();
+			_pollFds[index].events = POLLOUT;
+			requestBuffer.clear();
+			return;
+		}
+
+		if (chunkResult == CHUNK_ERROR)
+		{
+			HttpResponse response;
+			response.setStatus(400, "Bad Request");
+			response.setBody("Bad Request\n");
+			response.setContentType("text/plain");
+
+			_clientWriteBuffers[clientFd] = response.toString();
+			_pollFds[index].events = POLLOUT;
+			requestBuffer.clear();
+			return;
+		}
+
+		/*
+		* Check the decoded body size, not the encoded chunked
+		* representation size.
+		*/
+		if (decodedBody.size() >
+			serverConfig->getClientMaxBodySize())
+		{
+			HttpResponse response;
+			response.setStatus(413, "Payload Too Large");
+			response.setBody("Payload Too Large\n");
+			response.setContentType("text/plain");
+
+			_clientWriteBuffers[clientFd] = response.toString();
+			_pollFds[index].events = POLLOUT;
+			requestBuffer.clear();
+			return;
+		}
+
+		request.setBody(decodedBody);
+
+		/*
+		* At this point request._body contains only the decoded
+		* entity body.
+		*/
+	}
+	else if (!contentLength.empty())
+	{
+		std::size_t expectedBodyLength = 0;
+
+		if (!parseContentLength(contentLength,
+								expectedBodyLength))
+		{
+			HttpResponse response;
+			response.setStatus(400, "Bad Request");
+			response.setBody("Bad Request\n");
+			response.setContentType("text/plain");
+
+			_clientWriteBuffers[clientFd] = response.toString();
+			_pollFds[index].events = POLLOUT;
+			requestBuffer.clear();
+			return;
+		}
+
+		if (expectedBodyLength >
+			serverConfig->getClientMaxBodySize())
 		{
 			HttpResponse response;
 			response.setStatus(413, "Payload Too Large");
@@ -452,10 +811,15 @@ void Server::handleClientRead(std::size_t index)
 		}
 
 		std::size_t bodyStart = headerEnd + 4;
-		std::size_t actualBodyLength = requestBuffer.size() - bodyStart;
+		std::size_t actualBodyLength =
+			requestBuffer.size() - bodyStart;
 
 		if (actualBodyLength < expectedBodyLength)
 			return;
+
+		request.setBody(
+			requestBuffer.substr(bodyStart,
+								expectedBodyLength));
 	}
 
 	std::cout << "Method:  " << request.getMethod() << std::endl;
@@ -515,49 +879,42 @@ void Server::handleClientRead(std::size_t index)
 // HANDLE CLIENT WRITE
 void Server::handleClientWrite(std::size_t index)
 {
-	int clientFd = _pollFds[index].fd;
-	std::string &response = _clientWriteBuffers[clientFd];
+    int clientFd = _pollFds[index].fd;
+    std::string &response = _clientWriteBuffers[clientFd];
 
-	if (response.empty())
-	{
-		if (_clientKeepAlive[clientFd])
-		{
-			_pollFds[index].events = POLLIN;
-		}
-		else
-		{
-			removeClient(index);
-		}
-	}
+    if (response.empty())
+    {
+        if (_clientKeepAlive[clientFd])
+            _pollFds[index].events = POLLIN;
+        else
+            removeClient(index);
+        return;
+    }
 
-	ssize_t bytesSent = send(
-		clientFd,
-		response.c_str(),
-		response.size(),
-		0
-	);
+    ssize_t bytesSent = send(
+        clientFd,
+        response.c_str(),
+        response.size(),
+        0
+    );
 
-	if (bytesSent < 0)
-	{
-		removeClient(index);
-		return;
-	}
+    if (bytesSent < 0)
+    {
+        removeClient(index);
+        return;
+    }
 
-	if (bytesSent == 0)
-	{
-		return;
-	}
-
-	response.erase(0, bytesSent);
+    if (bytesSent == 0)
+        return;
 	/*
 		If the entire response has been sent, we switch back to monitoring for incoming data (POLLIN) on the client socket
 		so that clients can send additional requests without needing to reconnect.
 		This allows for persistent connections, which is a key feature of HTTP/1.1.
 	*/
-	if (response.empty())
-	{
-		_pollFds[index].events = POLLIN;
-	}
+    response.erase(0, bytesSent);
+
+    if (response.empty())
+        _pollFds[index].events = POLLIN;
 }
 
 /*

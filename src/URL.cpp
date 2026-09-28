@@ -4,8 +4,6 @@
 #include <cctype>
 #include <algorithm>
 #include <vector>
-#include <exception>
-#include <iostream>
 
 URL::URL() {}
 URL::~URL() {}
@@ -51,8 +49,18 @@ std::pair<URL, bool> URL::createFromRequestTarget(const std::string& s)
 		if (s.end() - it < 3 || s.substr(it - start, 3) != "://")
 			return std::make_pair(url, false);
 		it += 3;
-		std::string::const_iterator auth_end = std::find(it, s.end(), '/');
+		std::string::const_iterator auth_end = it;
+
+		while (auth_end != s.end()
+			&& *auth_end != '/'
+			&& *auth_end != '?')
+			++auth_end;
+
 		url._host = s.substr(it - start, auth_end - it);
+
+		if (url._host.empty())
+			return std::make_pair(url, false);
+
 		path_start = auth_end;
 	}
 	else if (s.empty() || s[0] != '/')

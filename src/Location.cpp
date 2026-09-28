@@ -3,7 +3,8 @@
 Location::Location() // Default constructor
     : _autoindex(false),
       _autoindexSet(false),
-      _upload(false)
+      _upload(false),
+      _returnCode(0)
 {
 }
 
@@ -11,7 +12,8 @@ Location::Location(const std::string &path) // Constructor with a specified path
     : _path(path),
       _autoindex(false),
       _autoindexSet(false),
-      _upload(false)
+      _upload(false),
+      _returnCode(0)
 {
 }
 
@@ -130,4 +132,20 @@ const std::string &Location::getCgiInterpreter (const std::string &extension) co
 	if (it == _cgiExtensions.end())
 		return (empty);
 	return (it->second);
+}
+
+void Location::setRedirection(int code, const std::string &path)
+{
+    _returnCode = code;
+    _returnPath = path;
+}
+
+int Location::getReturnCode() const
+{
+    return _returnCode;
+}
+
+const std::string &Location::getReturnPath() const
+{
+    return _returnPath;
 }

@@ -3,6 +3,7 @@
 
 #include <string>
 #include <map>
+#include <vector>
 
 /*
  * Represents an HTTP response with its status code, status text, headers, and body.

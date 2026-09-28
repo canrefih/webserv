@@ -63,6 +63,21 @@ class Server
 		void removeClient(std::size_t index);
 		void handleClientWrite(std::size_t index);
 
+		enum ChunkParseResult
+		{
+			CHUNK_INCOMPLETE,
+			CHUNK_COMPLETE,
+			CHUNK_ERROR,
+			CHUNK_TOO_LARGE
+		};
+
+		ChunkParseResult decodeChunkedBody(
+			const std::string &buffer,
+			std::size_t bodyStart,
+			std::size_t maxBodySize,
+			std::string &decodedBody,
+			std::size_t &consumed);
+
 	public:
 		Server(const Config &config);
 		~Server();

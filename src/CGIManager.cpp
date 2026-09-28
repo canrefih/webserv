@@ -74,9 +74,19 @@ bool	CGIManager::start(int clientFd, const HttpRequest &request, const ServerCon
 						  const std::string &scriptPath, const std::string &interpreterPath,
 						  std::vector<pollfd> &pollFds, std::string &immediateErrorResponse)
 {
+	if (_sessions.find(clientFd) != _sessions.end())
+	{
+		immediateErrorResponse = "HTTP/1.1 500 Internal Server Error\r\n"
+								"Content-Length: 0\r\n"
+								"Connection: close\r\n"
+								"\r\n";
+		return (false);
+	}
 	std::vector<std::string> env = buildCGIEnv(request, serverConfig.getHost(), serverConfig.getPort(), scriptPath);
 	CGIHandler *cgi = new CGIHandler();
 
+	std::cerr << "CGI script: " << scriptPath << std::endl;
+	std::cerr << "CGI interpreter: " << interpreterPath << std::endl;
 	cgi->setup(scriptPath, interpreterPath, env);
 
 	if (!cgi->start())
@@ -99,6 +109,7 @@ bool	CGIManager::start(int clientFd, const HttpRequest &request, const ServerCon
 	session->bodySent = 0;
 	session->start = time(NULL);
 	session->keepAlive = (request.getHeader("Connection") != "close");
+	session->stdoutClosed = false;
 	_sessions[clientFd] = session;
 
 	struct pollfd pfd;
@@ -148,9 +159,6 @@ void	CGIManager::handleEvent(int fd, short revents, std::vector<pollfd> &pollFds
 
 		if (bytesWritten < 0)
 		{
-			if (errno == EAGAIN || errno == EWOULDBLOCK)
-				return; // Pipe not ready yet, retry on the next poll() tick
-
 			abort(clientFd, session, pollFds, 500, "Internal Server Error");
 			return;
 		}
@@ -173,19 +181,16 @@ void	CGIManager::handleEvent(int fd, short revents, std::vector<pollfd> &pollFds
 
 		if (bytesRead < 0)
 		{
-			if (errno == EAGAIN || errno == EWOULDBLOCK)
-				return; // Nothing to read yet, retry on the next poll() tick
-
 			abort(clientFd, session, pollFds, 500, "Internal Server Error");
 			return;
 		}
 
 		if (bytesRead == 0) // EOF: the script closed its stdout, its output is complete
 		{
+			session->stdoutClosed = true;
 			session->cgi->closeStdoutFd();
 			_fdToClient.erase(fd);
 			removeFd(pollFds, fd);
-			finish(clientFd, session, pollFds);
 			return;
 		}
 
@@ -319,22 +324,45 @@ void	CGIManager::abort(int clientFd, CgiSession *session, std::vector<pollfd> &p
 }
 
 // Called once per poll() tick: kills any CGI script that has been running longer than CGI_TIMEOUT_SECONDS
-void	CGIManager::checkTimeouts(std::vector<pollfd> &pollFds)
+void CGIManager::checkTimeouts(std::vector<pollfd> &pollFds)
 {
-	static const time_t CGI_TIMEOUT_SECONDS = 30;
-	time_t now = time(NULL);
-	std::map<int, CgiSession*>::iterator it = _sessions.begin();
+    static const time_t CGI_TIMEOUT_SECONDS = 30;
+    time_t now = time(NULL);
 
-	while (it != _sessions.end())
-	{
-		int clientFd = it->first;
-		CgiSession *session = it->second;
+    std::map<int, CgiSession*>::iterator it = _sessions.begin();
+    while (it != _sessions.end())
+    {
+        int clientFd = it->first;
+        CgiSession *session = it->second;
+        ++it;
 
-		++it; // advance before a possible abort() erases the current entry
+		if (session->stdoutClosed)
+		{
+			int exitCode = -1;
+			int ret = session->cgi->tryWait(exitCode);
+
+			if (ret == 1)
+			{
+				if (exitCode != 0)
+					abort(clientFd, session, pollFds,
+						502, "Bad Gateway");
+				else
+					finish(clientFd, session, pollFds);
+				continue;
+			}
+
+			if (ret == -1)
+			{
+				abort(clientFd, session, pollFds,
+					500, "Internal Server Error");
+				continue;
+			}
+		}
 
 		if (now - session->start > CGI_TIMEOUT_SECONDS)
-			abort(clientFd, session, pollFds, 504, "Gateway Timeout");
-	}
+			abort(clientFd, session, pollFds,
+				504, "Gateway Timeout");
+    }
 }
 
 // The client disconnected while a CGI was still running for it: kill it and drop its pipes, no response needed since there's no one left to send it to

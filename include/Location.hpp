@@ -22,7 +22,8 @@ class Location
         std::string              _uploadStore;
         std::vector<std::string> _allowedMethods;
 		std::map<std::string, std::string> _cgiExtensions;
-
+        int                      _returnCode;
+        std::string              _returnPath;
 
     public:
         Location();
@@ -42,6 +43,10 @@ class Location
 		bool isCgiExtension(const std::string &extension) const;
 		const std::string &getCgiInterpreter(const std::string &extension) const;
 		/*end*/
+
+        void setRedirection(int code, const std::string &path);
+        int getReturnCode() const;
+        const std::string &getReturnPath() const;
 
         const std::string &getPath() const;
         const std::string &getRoot() const;

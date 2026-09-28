@@ -18,7 +18,8 @@ class RequestHandler
 	private:
 		const ServerConfig &_serverConfig;
 
-		std::string readFile(const std::string &path); // Read the contents of a file from the filesystem and return it as a string
+		bool readFile(const std::string &path,
+              std::string &content); // Read the contents of a file from the filesystem and return it as a string
 		std::string getContentType(const std::string &path); // Determine the MIME type of a file based on its extension (e.g., .html, .css, .js) and return the corresponding Content-Type string
 		std::string generateDirectoryListing(const std::string &path, const std::string &url); // Generate an HTML page that lists the contents of a directory, including links to files and subdirectories, based on the specified filesystem path and URL
 		bool fileExists(const std::string &path); // Check if a file exists at the specified path in the filesystem and return true if it does, false otherwise

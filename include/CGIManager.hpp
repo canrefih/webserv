@@ -18,12 +18,13 @@ far from its stdout, and when it started (for the timeout check).
 */
 struct CgiSession
 {
-	CGIHandler	*cgi;
-	std::string	body;
-	std::size_t	bodySent;
-	std::string	output;
-	time_t		start;
-	bool		keepAlive;
+    CGIHandler *cgi;
+    std::string body;
+    std::size_t bodySent;
+    std::string output;
+    time_t start;
+    bool keepAlive;
+    bool stdoutClosed;
 };
 
 // One finished (or aborted) CGI execution, waiting to be turned into a client write buffer by Server.

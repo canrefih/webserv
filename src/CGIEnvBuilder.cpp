@@ -43,11 +43,13 @@ std::vector<std::string> buildCGIEnv(const HttpRequest &request, const std::stri
 	std::string portStr = portStream.str();
 	lenStream << request.getBody().size();
 	std::string lenStr = lenStream.str();
+	std::string pathInfo = ""; // İstekten ayrıştırdığın extra path varsa buraya gelir
 
 	/* base CGI/1.1 meta-variables (see RFC 3875)*/
 	env.push_back("REQUEST_METHOD=" + request.getMethod());
 	env.push_back("SCRIPT_NAME=" + scriptName);
 	env.push_back("SCRIPT_FILENAME=" + scriptPath);
+	env.push_back("PATH_INFO=" + pathInfo);
 	env.push_back("QUERY_STRING=" + queryString);
 	env.push_back("SERVER_PROTOCOL=" + request.getVersion());
 	env.push_back("SERVER_NAME=" + serverName);

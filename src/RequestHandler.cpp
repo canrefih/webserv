@@ -9,6 +9,9 @@
 #include <sys/stat.h> // For file status information S_ISREG
 #include <fcntl.h>
 #include <dirent.h> // For directory operations
+#include <algorithm>
+#include <cctype>
+#include <cerrno>
 
 RequestHandler::RequestHandler(const ServerConfig &serverConfig)
 	: _serverConfig(serverConfig)
@@ -17,6 +20,51 @@ RequestHandler::RequestHandler(const ServerConfig &serverConfig)
 
 RequestHandler::~RequestHandler()
 {
+}
+
+static std::string toLower(const std::string &value)
+{
+    std::string result = value;
+
+    for (std::size_t i = 0; i < result.size(); ++i)
+        result[i] = static_cast<char>(
+            std::tolower(static_cast<unsigned char>(result[i]))
+        );
+
+    return result;
+}
+
+// sup function to help to escape characters
+static std::string escapeHtml(const std::string &value)
+{
+    std::string result;
+
+    for (std::size_t i = 0; i < value.size(); ++i)
+    {
+        switch (value[i])
+        {
+            case '&':
+                result += "&amp;";
+                break;
+            case '<':
+                result += "&lt;";
+                break;
+            case '>':
+                result += "&gt;";
+                break;
+            case '"':
+                result += "&quot;";
+                break;
+            case '\'':
+                result += "&#39;";
+                break;
+            default:
+                result += value[i];
+                break;
+        }
+    }
+
+    return result;
 }
 
 // Handle the incoming HTTP request and generate an appropriate HTTP response based on the request method, target, and server configuration.
@@ -33,59 +81,82 @@ void RequestHandler::handleRequest(const HttpRequest &request, HttpResponse &res
 	{
 		if (location == NULL || !location->getUpload())
 		{
-			response.setStatus(405, "Method Not Allowed");
-			response.setBody("Method Not Allowed\n");
-			response.setContentType("text/plain");
+			setErrorResponse(response, 405,
+							"Method Not Allowed",
+							"Method Not Allowed\n");
+		}
+		else if (request.getBody().size() > _serverConfig.getClientMaxBodySize())
+		{
+			setErrorResponse(response, 413,
+							"Payload Too Large",
+							"Payload Too Large\n");
 		}
 		else
 		{
 			static int uploadCounter = 0;
 			++uploadCounter;
 
-			std::ostringstream filename;
-			filename << location->getUploadStore()
-					<< "/upload-"
-					<< uploadCounter
-					<< ".txt";
-
 			if (location->getUploadStore().empty())
 			{
-				response.setStatus(500, "Internal Server Error");
-				response.setBody("Upload store is not configured\n");
-				response.setContentType("text/plain");
+				setErrorResponse(response, 500,
+								"Internal Server Error",
+								"Upload store is not configured\n");
 			}
 			else
 			{
-				int fd = open(filename.str().c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+				std::ostringstream filename;
+				filename << location->getUploadStore()
+						<< "/upload-"
+						<< uploadCounter
+						<< ".txt";
+
+				int fd = open(filename.str().c_str(),
+							O_WRONLY | O_CREAT | O_TRUNC,
+							0644);
 
 				if (fd == -1)
 				{
-					response.setStatus(500, "Internal Server Error");
-					response.setBody("Internal Server Error\n");
-					response.setContentType("text/plain");
+					setErrorResponse(response, 500,
+									"Internal Server Error",
+									"Internal Server Error\n");
 				}
 				else
 				{
 					const std::string &body = request.getBody();
+					std::size_t totalWritten = 0;
+					bool writeError = false;
 
-					if (!body.empty()) // Write the request body to the file if it is not empty
+					while (totalWritten < body.size())
 					{
-						ssize_t bytesWritten = write(fd, body.c_str(), body.size());
+						ssize_t bytesWritten =
+							write(fd,
+								body.c_str() + totalWritten,
+								body.size() - totalWritten);
 
-						if (bytesWritten != static_cast<ssize_t>(body.size()))
+						if (bytesWritten <= 0)
 						{
-							close(fd);
-							response.setStatus(500, "Internal Server Error");
-							response.setBody("Internal Server Error\n");
-							response.setContentType("text/plain");
-							return;
+							writeError = true;
+							break;
 						}
+
+						totalWritten +=
+							static_cast<std::size_t>(bytesWritten);
 					}
 
 					close(fd);
-					response.setStatus(201, "Created");
-					response.setBody("File uploaded\n");
-					response.setContentType("text/plain");
+
+					if (writeError)
+					{
+						setErrorResponse(response, 500,
+										"Internal Server Error",
+										"Internal Server Error\n");
+					}
+					else
+					{
+						response.setStatus(201, "Created");
+						response.setBody("");
+						response.setContentType("text/plain");
+					}
 				}
 			}
 		}
@@ -124,11 +195,18 @@ void RequestHandler::handleRequest(const HttpRequest &request, HttpResponse &res
 				response.setBody("");
 				response.setContentType("text/plain");
 			}
+			else if (errno == EACCES || errno == EPERM)
+			{
+				setErrorResponse(response, 403, "Forbidden", "Forbidden\n");
+			}
+			else if (errno == ENOENT)
+			{
+				setErrorResponse(response, 404, "Not Found", "Not Found\n");
+			}
 			else
 			{
-				response.setStatus(500, "Internal Server Error");
-				response.setBody("Internal Server Error\n");
-				response.setContentType("text/plain");
+				setErrorResponse(response, 500, "Internal Server Error",
+								"Internal Server Error\n");
 			}
 		}
 	}
@@ -140,11 +218,15 @@ void RequestHandler::handleRequest(const HttpRequest &request, HttpResponse &res
 		if (location != NULL && !location->getRoot().empty())
 		{
 			root = location->getRoot();
+
 			std::string locationPath = location->getPath();
-			std::string relativePath = request.getTarget().getPath().substr(locationPath.size());
+			std::string relativePath =
+				request.getTarget().getPath().substr(locationPath.size());
 
 			if (relativePath.empty())
 				relativePath = "/";
+			else if (relativePath[0] != '/')
+				relativePath = "/" + relativePath;
 
 			path = root + relativePath;
 		}
@@ -157,7 +239,7 @@ void RequestHandler::handleRequest(const HttpRequest &request, HttpResponse &res
 		{
 			setErrorResponse(response, 404, "Not Found", "Not Found\n");
 		}
-		else if (isDirectory(path)) // If the target path is a directory, check for an index file or generate a directory listing based on the server configuration and location settings
+		else if (isDirectory(path))
 		{
 			std::string directoryPath = path;
 
@@ -171,13 +253,22 @@ void RequestHandler::handleRequest(const HttpRequest &request, HttpResponse &res
 
 			std::string indexPath = directoryPath + index;
 
-			if (fileExists(indexPath)) // If an index file exists in the directory, read its contents and set it as the response body with a 200 OK status
+			if (fileExists(indexPath))
 			{
-				std::string body = readFile(indexPath);
+				std::string body;
 
-				response.setStatus(200, "OK");
-				response.setBody(body);
-				response.setContentType(getContentType(indexPath));
+				if (!readFile(indexPath, body))
+				{
+					setErrorResponse(response, 500,
+									"Internal Server Error",
+									"Internal Server Error\n");
+				}
+				else
+				{
+					response.setStatus(200, "OK");
+					response.setBody(body);
+					response.setContentType(getContentType(indexPath));
+				}
 			}
 			else
 			{
@@ -186,9 +277,12 @@ void RequestHandler::handleRequest(const HttpRequest &request, HttpResponse &res
 				if (location != NULL && location->isAutoIndexSet())
 					autoindex = location->getAutoIndex();
 
-				if (autoindex) // If autoindex is enabled, generate a directory listing and set it as the response body with a 200 OK status
+				if (autoindex)
 				{
-					std::string body = generateDirectoryListing(directoryPath, request.getTarget().getPath());
+					std::string body =
+						generateDirectoryListing(
+							directoryPath,
+							request.getTarget().getPath());
 
 					response.setStatus(200, "OK");
 					response.setBody(body);
@@ -196,43 +290,57 @@ void RequestHandler::handleRequest(const HttpRequest &request, HttpResponse &res
 				}
 				else
 				{
-					setErrorResponse(response, 403, "Forbidden", "Forbidden\n");
+					setErrorResponse(response, 404,
+									"Not Found",
+									"Not Found\n");
 				}
 			}
 		}
-		else // If the target path is a file, read its contents and set it as the response body with a 200 OK status
+		else
 		{
-			std::string body = readFile(path);
+			std::string body;
 
-			response.setStatus(200, "OK");
-			response.setBody(body);
-			response.setContentType(getContentType(path));
+			if (!readFile(path, body))
+			{
+				setErrorResponse(response, 500,
+								"Internal Server Error",
+								"Internal Server Error\n");
+			}
+			else
+			{
+				response.setStatus(200, "OK");
+				response.setBody(body);
+				response.setContentType(getContentType(path));
+			}
 		}
 	}
-	else // If the request method is not supported, set an error response indicating that the method is not allowed (405)
+	else
 	{
-		setErrorResponse(response, 405, "Method Not Allowed", "Method Not Allowed\n");
+		setErrorResponse(response, 405,
+						"Method Not Allowed",
+						"Method Not Allowed\n");
 	}
 }
-
 // Read the contents of a file from the filesystem and return it as a string. If the file cannot be opened, return an empty string.
-std::string RequestHandler::readFile(const std::string &path)
+bool RequestHandler::readFile(const std::string &path,
+                              std::string &content)
 {
-	int fd = open(path.c_str(), O_RDONLY);
+    int fd = open(path.c_str(), O_RDONLY);
 
-	if (fd == -1)
-		return "";
+    if (fd == -1)
+        return false;
 
-	std::string content;
-	char buffer[4096];
-	ssize_t bytesRead;
+    content.clear();
 
-	while ((bytesRead = read(fd, buffer, sizeof(buffer))) > 0)
-		content.append(buffer, bytesRead);
+    char buffer[4096];
+    ssize_t bytesRead;
 
-	close(fd);
+    while ((bytesRead = read(fd, buffer, sizeof(buffer))) > 0)
+        content.append(buffer, bytesRead);
 
-	return content;
+    close(fd);
+
+    return bytesRead == 0;
 }
 
 // Check if a file exists at the specified path in the filesystem and return true if it does, false otherwise
@@ -255,7 +363,7 @@ std::string RequestHandler::getContentType(const std::string &path)
 	if (dot == std::string::npos)
 		return "application/octet-stream";
 
-	std::string extension = path.substr(dot);
+	std::string extension = toLower(path.substr(dot));
 
 	if (extension == ".html" || extension == ".htm")
 		return "text/html";
@@ -324,15 +432,15 @@ std::string RequestHandler::generateDirectoryListing(const std::string &path, co
 		if (name == "." || name == "..")
 			continue;
 
+		std::string escapedName = escapeHtml(name);
+
 		body += "<li><a href=\"";
 		body += url;
-
 		if (url[url.size() - 1] != '/')
 			body += "/";
-
-		body += name;
+		body += escapedName;
 		body += "\">";
-		body += name;
+		body += escapedName;
 		body += "</a></li>\n";
 	}
 
@@ -351,21 +459,24 @@ void RequestHandler::setErrorResponse(HttpResponse &response, int statusCode,
 {
 	const std::string *errorPage = _serverConfig.getErrorPage(statusCode);
 
-	if (errorPage != NULL)
+	if (errorPage != NULL) // if there errorpage
 	{
 		std::string path = _serverConfig.getRoot() + *errorPage;
 
 		if (fileExists(path))
 		{
-			std::string body = readFile(path);
+			std::string body;
 
-			response.setStatus(statusCode, statusText);
-			response.setBody(body);
-			response.setContentType(getContentType(path));
-			return;
+			if(readFile(path, body))
+			{
+				response.setStatus(statusCode, statusText);
+				response.setBody(body);
+				response.setContentType(getContentType(path));
+				return;
+			}
 		}
 	}
-
+	//if there is no error page it gives default error response
 	response.setStatus(statusCode, statusText);
 	response.setBody(defaultBody);
 	response.setContentType("text/plain");

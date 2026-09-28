@@ -32,6 +32,11 @@ with the values needed to launch the CGI script via execve()..
 */
 void	CGIHandler::setup(const std::string &scriptPath, const std::string &interpreterPath, const std::vector<std::string> &env)
 {
+	_argv.clear();
+    _envp.clear();
+    _tmps.clear();
+    _envTmps.clear();
+
 	_scriptPath = scriptPath;
 	_tmps.push_back(interpreterPath);
 	_tmps.push_back(scriptPath);
@@ -39,11 +44,11 @@ void	CGIHandler::setup(const std::string &scriptPath, const std::string &interpr
 		_argv.push_back(_tmps[i].c_str());
 	_argv.push_back(NULL);
 	_envTmps = env;
+	for (std::size_t i = 0; i < _envTmps.size(); i++)
+    	std::cerr << "CGI ENV: " << _envTmps[i] << std::endl;
 	for(std::size_t i = 0; i < _envTmps.size(); i++)
 		_envp.push_back(_envTmps[i].c_str());
 	_envp.push_back(NULL);
-
-
 }
 
 /*
@@ -87,8 +92,19 @@ fails, logs the error and exits (killing only the child, not the server).
 */
 void	CGIHandler::childProcess( void )
 {
-	dup2(fd[0], 0);
-	dup2(fd[3], 1);
+	if (dup2(fd[0], STDIN_FILENO) == -1)
+	{
+		std::cerr << "dup2 stdin failed: "
+				<< strerror(errno) << std::endl;
+		_exit(1);
+	}
+
+	if (dup2(fd[3], STDOUT_FILENO) == -1)
+	{
+		std::cerr << "dup2 stdout failed: "
+				<< strerror(errno) << std::endl;
+		_exit(1);
+	}
 	close(fd[0]);
 	close(fd[1]);
 	close(fd[2]);
@@ -102,8 +118,9 @@ void	CGIHandler::childProcess( void )
 		close(i);
 
 	execve(_argv[0], const_cast<char**>(&_argv[0]), const_cast<char**>(&_envp[0]));
-	std::cerr<< strerror(errno) << std::endl;
-	exit(errno);
+	std::cerr << "execve failed: "
+			<< strerror(errno) << std::endl;
+	_exit(errno);
 }
 
 /*
@@ -114,6 +131,11 @@ fd[1]/fd[2] through poll() and reaping the child via tryWait().
 */
 bool	CGIHandler::start( void )
 {
+	if (running)
+    {
+        std::cerr << "CGI is already running." << std::endl;
+        return false;
+    }
 	if (_argv.size() == 0)
 	{
 		std::cerr << "Problem with argv[0]" << std::endl;
@@ -174,6 +196,12 @@ the server. Same status-decoding convention as before:
 */
 int		CGIHandler::tryWait( int &exitCode )
 {
+	if (pid <= 0)
+    {
+        exitCode = -256;
+        return -1;
+    }
+	
 	int		status = -1;
 	pid_t	ret = waitpid(pid, &status, WNOHANG);
 
@@ -206,5 +234,9 @@ reap it once waitpid() reports it as exited.
 void	CGIHandler::kill( void )
 {
 	if (running)
-		::kill(pid, SIGKILL);
+	{
+		if (::kill(pid, SIGKILL) == -1)
+			std::cerr << "Failed to kill CGI: "
+					<< strerror(errno) << std::endl;
+	}
 }

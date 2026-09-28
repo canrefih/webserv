@@ -1,57 +1,94 @@
-#include "../include/Config.hpp"
-#include "../include/Server.hpp"
 #include "../include/Signal.hpp"
 
 #include <iostream>
-#include <unistd.h>
-#include <sys/wait.h>
 #include <csignal>
-#include <cstdlib>
 
 int main()
 {
-	std::cout << "=== SIGNAL HANDLING TEST ===" << std::endl;
+    std::cout << "=== SIGNAL UNIT TESTS ===" << std::endl;
 
-	pid_t pid = fork();
+    std::cout << "\nTest 1: Initial running state..." << std::endl;
 
-	if (pid == 0)
-	{
-		Config config;
-		if (!config.parse("../config/test.conf"))
-		{
-			std::cerr << "FAIL: Config parse failed" << std::endl;
-			exit(1);
-		}
+    g_serverRunning = true;
 
-		setupSignalHandlers();
+    if (!g_serverRunning)
+    {
+        std::cerr << "FAIL: Server should start in running state" << std::endl;
+        return 1;
+    }
 
-		Server server(config);
-		server.run();
-		exit(0);
-	}
-	else if (pid > 0)
-	{
-		sleep(3);
+    std::cout << "PASS: Initial state correct" << std::endl;
 
-		std::cout << "Sending SIGINT to server (PID "
-				  << pid << ")..." << std::endl;
+    std::cout << "\nTest 2: SIGINT handler..." << std::endl;
 
-		kill(pid, SIGTERM);
+    g_serverRunning = true;
+    signalHandler(SIGINT);
 
-		int status;
-		waitpid(pid, &status, 0);
+    if (g_serverRunning)
+    {
+        std::cerr << "FAIL: SIGINT should stop server" << std::endl;
+        return 1;
+    }
 
-		if (WIFEXITED(status))
-		{
-			std::cout << "✓ PASS: Server exited gracefully on SIGINT"
-					  << std::endl;
-		}
-		else
-		{
-			std::cout << "✗ FAIL: Server terminated by signal (status: "
-					  << status << ")" << std::endl;
-		}
-	}
+    std::cout << "PASS: SIGINT handler working" << std::endl;
 
-	return 0;
+    std::cout << "\nTest 3: SIGTERM handler..." << std::endl;
+
+    g_serverRunning = true;
+    signalHandler(SIGTERM);
+
+    if (g_serverRunning)
+    {
+        std::cerr << "FAIL: SIGTERM should stop server" << std::endl;
+        return 1;
+    }
+
+    std::cout << "PASS: SIGTERM handler working" << std::endl;
+
+    std::cout << "\nTest 4: Handler remains stopped..." << std::endl;
+
+    signalHandler(SIGINT);
+
+    if (g_serverRunning)
+    {
+        std::cerr << "FAIL: Handler should keep server stopped"
+                  << std::endl;
+        return 1;
+    }
+
+    std::cout << "PASS: Handler state correct" << std::endl;
+
+    std::cout << "\nTest 5: setupSignalHandlers..." << std::endl;
+
+    g_serverRunning = true;
+    setupSignalHandlers();
+
+    raise(SIGINT);
+
+    if (g_serverRunning)
+    {
+        std::cerr << "FAIL: SIGINT handler was not installed"
+                  << std::endl;
+        return 1;
+    }
+
+    std::cout << "PASS: SIGINT handler installed" << std::endl;
+
+    g_serverRunning = true;
+
+    raise(SIGTERM);
+
+    if (g_serverRunning)
+    {
+        std::cerr << "FAIL: SIGTERM handler was not installed"
+                  << std::endl;
+        return 1;
+    }
+
+    std::cout << "PASS: SIGTERM handler installed" << std::endl;
+
+    std::cout << "\n=== ALL SIGNAL UNIT TESTS PASSED ==="
+              << std::endl;
+
+    return 0;
 }

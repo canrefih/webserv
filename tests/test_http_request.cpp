@@ -228,45 +228,133 @@ int main()
 	std::cout << "PASS: Request body handled correctly" << std::endl;
 
 	// ---------------------------------------------------------
-	// Test 7: Invalid request
-	// ---------------------------------------------------------
-	std::cout << "\nTest 7: Invalid request..." << std::endl;
+    // Test 7: Invalid request
+    // ---------------------------------------------------------
+    std::cout << "\nTest 7: Invalid request..." << std::endl;
 
-	HttpRequest request3;
+    HttpRequest request3;
 
-	if (request3.parse("INVALID REQUEST\r\n\r\n"))
-	{
-		std::cerr << "FAIL: Invalid request was accepted" << std::endl;
-		return 1;
-	}
+    if (request3.parse("INVALID REQUEST\r\n\r\n"))
+    {
+        std::cerr << "FAIL: Invalid request was accepted" << std::endl;
+        return 1;
+    }
 
-	std::cout << "PASS: Invalid request rejected" << std::endl;
+    std::cout << "PASS: Invalid request rejected" << std::endl;
 
-	// ---------------------------------------------------------
-	// Test 8: Invalid header
-	// ---------------------------------------------------------
-	std::cout << "\nTest 8: Invalid header..." << std::endl;
+    // ---------------------------------------------------------
+    // Test 8: Invalid header
+    // ---------------------------------------------------------
+    std::cout << "\nTest 8: Invalid header..." << std::endl;
 
-	HttpRequest request4;
+    HttpRequest request4;
 
-	std::string invalidHeaderRequest =
-		"GET / HTTP/1.1\r\n"
-		"Host: localhost\r\n"
-		"InvalidHeaderWithoutColon\r\n"
-		"\r\n";
+    std::string invalidHeaderRequest =
+        "GET / HTTP/1.1\r\n"
+        "Host: localhost\r\n"
+        "InvalidHeaderWithoutColon\r\n"
+        "\r\n";
 
-	if (request4.parse(invalidHeaderRequest))
-	{
-		std::cerr << "FAIL: Invalid header was accepted" << std::endl;
-		return 1;
-	}
+    if (request4.parse(invalidHeaderRequest))
+    {
+        std::cerr << "FAIL: Invalid header was accepted" << std::endl;
+        return 1;
+    }
 
-	std::cout << "PASS: Invalid header rejected" << std::endl;
+    std::cout << "PASS: Invalid header rejected" << std::endl;
 
-	// ---------------------------------------------------------
-	// Final result
-	// ---------------------------------------------------------
-	std::cout << "\n=== ALL HTTP REQUEST TESTS PASSED ===" << std::endl;
+    // ---------------------------------------------------------
+    // Test 9: Extra token in request line
+    // ---------------------------------------------------------
+    std::cout << "\nTest 9: Extra token in request line..." << std::endl;
 
-	return 0;
+    HttpRequest requestExtraToken;
+
+    if (requestExtraToken.parse("GET / HTTP/1.1 EXTRA_DATA\r\nHost: localhost\r\n\r\n"))
+    {
+        std::cerr << "FAIL: Request line with extra token was accepted" << std::endl;
+        return 1;
+    }
+
+    std::cout << "PASS: Request line with extra token rejected" << std::endl;
+
+    // ---------------------------------------------------------
+    // Test 10: Invalid HTTP version
+    // ---------------------------------------------------------
+    std::cout << "\nTest 10: Invalid HTTP version..." << std::endl;
+
+    HttpRequest requestBadVersion;
+
+    if (requestBadVersion.parse("GET / HTTP/2.0\r\nHost: localhost\r\n\r\n"))
+    {
+        std::cerr << "FAIL: Invalid HTTP version (HTTP/2.0) was accepted" << std::endl;
+        return 1;
+    }
+
+    std::cout << "PASS: Invalid HTTP version rejected" << std::endl;
+
+    // ---------------------------------------------------------
+    // Test 11: Whitespace before colon in header name (RFC 7230)
+    // ---------------------------------------------------------
+    std::cout << "\nTest 11: Whitespace before colon in header..." << std::endl;
+
+    HttpRequest requestSpaceBeforeColon;
+
+    if (requestSpaceBeforeColon.parse("GET / HTTP/1.1\r\nHost : localhost\r\n\r\n"))
+    {
+        std::cerr << "FAIL: Header with space before colon was accepted" << std::endl;
+        return 1;
+    }
+
+    std::cout << "PASS: Header with space before colon rejected" << std::endl;
+
+    // ---------------------------------------------------------
+    // Test 12: Header trailing whitespace trimming
+    // ---------------------------------------------------------
+    std::cout << "\nTest 12: Header trailing whitespace trimming..." << std::endl;
+
+    HttpRequest requestTrim;
+
+    if (!requestTrim.parse("GET / HTTP/1.1\r\nHost: localhost   \r\n\r\n"))
+    {
+        std::cerr << "FAIL: Valid header with trailing spaces was rejected" << std::endl;
+        return 1;
+    }
+
+    if (requestTrim.getHeader("Host") != "localhost")
+    {
+        std::cerr << "FAIL: Trailing spaces were not trimmed. Expected 'localhost', got '"
+                  << requestTrim.getHeader("Host") << "'" << std::endl;
+        return 1;
+    }
+
+    std::cout << "PASS: Header trailing whitespace trimmed correctly" << std::endl;
+
+    // ---------------------------------------------------------
+    // Test 13: Body parsing with LF-LF (\n\n) delimiter
+    // ---------------------------------------------------------
+    std::cout << "\nTest 13: Body parsing with LF-LF delimiter..." << std::endl;
+
+    HttpRequest requestLfLf;
+
+    if (!requestLfLf.parse("POST / HTTP/1.1\nHost: localhost\n\nHello World"))
+    {
+        std::cerr << "FAIL: Request with LF-LF delimiter was rejected" << std::endl;
+        return 1;
+    }
+
+    if (requestLfLf.getBody() != "Hello World")
+    {
+        std::cerr << "FAIL: Body with LF-LF delimiter was not parsed correctly" << std::endl;
+        return 1;
+    }
+
+    std::cout << "PASS: Body with LF-LF delimiter parsed correctly" << std::endl;
+
+    // ---------------------------------------------------------
+    // Final result
+    // ---------------------------------------------------------
+    std::cout << "\n=== ALL HTTP REQUEST TESTS PASSED ===" << std::endl;
+
+    return 0;
 }

@@ -6,6 +6,7 @@ ServerConfig::ServerConfig() // Constructor with default values
       _root("./www"),
       _index("index.html"),
       _autoindex(false),
+      _uploadPath(""),
       _clientMaxBodySize(2097152)
 {
 }
@@ -65,24 +66,21 @@ const Location *ServerConfig::findLocation(const std::string &path) const
     const Location *bestMatch = NULL;
     std::size_t bestLength = 0;
 
-    std::vector<Location>::const_iterator it;
-
-    for (it = _locations.begin(); it != _locations.end(); ++it)
+    for (std::vector<Location>::const_iterator it = _locations.begin(); it != _locations.end(); ++it)
     {
         const std::string &locationPath = it->getPath();
 
-        if (path.compare(0, locationPath.size(), locationPath) != 0) // Not a prefix match
+        // if the request doesnt start with locationPath
+        if (path.compare(0, locationPath.size(), locationPath) != 0)
             continue;
 
-        if (path.size() == locationPath.size()) // Exact match
-        {
-            if (locationPath.size() > bestLength)
-            {
-                bestMatch = &(*it);
-                bestLength = locationPath.size();
-            }
-        }
-        else if (locationPath == "/" || path[locationPath.size()] == '/') // Ensure that the match is a directory prefix
+        // valid check for paths
+        bool isBoundaryMatch = (path.size() == locationPath.size()) ||
+                               (locationPath == "/") ||
+                               (!locationPath.empty() && locationPath[locationPath.size() - 1] == '/') ||
+                               (path.size() > locationPath.size() && path[locationPath.size()] == '/');
+
+        if (isBoundaryMatch)
         {
             if (locationPath.size() > bestLength)
             {
@@ -149,4 +147,14 @@ const std::string *ServerConfig::getErrorPage(int statusCode) const // Retrieve 
         return NULL;
 
     return &it->second;
+}
+
+void ServerConfig::addServerName(const std::string &name)
+{
+    _serverNames.push_back(name);
+}
+
+const std::vector<std::string> &ServerConfig::getServerNames() const
+{
+    return _serverNames;
 }

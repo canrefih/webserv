@@ -26,6 +26,7 @@ class ServerConfig
 		std::size_t _clientMaxBodySize;
 		std::vector<Location> _locations;
 		std::map<int, std::string> _errorPages;
+		std::vector<std::string> _serverNames;
 
 	public:
 		ServerConfig();
@@ -56,6 +57,9 @@ class ServerConfig
 		void addLocation(const Location &location);
 		void setErrorPage(int statusCode, const std::string &path);
 		const std::string *getErrorPage(int statusCode) const;
+
+		void addServerName(const std::string &name);
+    	const std::vector<std::string> &getServerNames() const;
 };
 
 #endif
