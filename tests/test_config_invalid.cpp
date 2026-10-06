@@ -304,17 +304,49 @@ int main()
 
 	/*
 	* Test 16
-	* client_max_body_size inside location.
+	* client_max_body_size inside location is allowed (as in nginx):
+	* it overrides the server limit for that location only.
+	* An invalid value is still rejected there.
 	*/
 	{
 		++total;
 
-		if (expectFailure(
-				"client_max_body_size inside location",
+		const std::string filename = "config/test_invalid.conf";
+		Config locationConfig;
+		bool ok = writeConfig(filename,
+				"server {\n"
+				"    listen 127.0.0.1:8080;\n"
+				"    client_max_body_size 10M;\n"
+				"    location /small {\n"
+				"        client_max_body_size 100;\n"
+				"    }\n"
+				"}\n")
+			&& locationConfig.parse(filename);
+
+		std::remove(filename.c_str());
+
+		if (ok)
+		{
+			const ServerConfig &server = locationConfig.getServers()[0];
+			const Location *small = server.findLocation("/small");
+
+			ok = small != NULL
+				&& server.getClientMaxBodySize() == 10 * 1024 * 1024
+				&& server.getClientMaxBodySize(small) == 100
+				&& server.getClientMaxBodySize(server.findLocation("/other")) == 10 * 1024 * 1024;
+		}
+
+		if (ok)
+			std::cout << "PASS: client_max_body_size inside location overrides server limit" << std::endl;
+		else
+			std::cerr << "FAIL: client_max_body_size inside location should override server limit" << std::endl;
+
+		if (ok && expectFailure(
+				"Invalid client_max_body_size inside location",
 				"server {\n"
 				"    listen 127.0.0.1:8080;\n"
 				"    location / {\n"
-				"        client_max_body_size 10M;\n"
+				"        client_max_body_size abc;\n"
 				"    }\n"
 				"}\n"))
 			++passed;

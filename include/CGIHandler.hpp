@@ -9,6 +9,8 @@
 #include <sys/wait.h>
 #include <string.h>
 
+static const int MAX_FD = 1024;
+
 class CGIHandler
 {
 private:
@@ -17,6 +19,7 @@ private:
 	std::vector<std::string> _tmps;
 	std::vector<std::string> _envTmps;
 	std::string _scriptPath;
+	std::string _scriptDir;	// directory the child chdir()s into before execve
 
 	int fd[4];
 	pid_t pid;
@@ -24,6 +27,7 @@ private:
 
 	bool	setupPipes( void );
 	void	childProcess( void );
+	void	closeAllPipes( void );
 
 public:
 	CGIHandler( void );
@@ -39,6 +43,8 @@ public:
 
 	int		tryWait( int &exitCode );
 	void	kill( void );				//force-terminate a runaway CGI (e.g. on timeout)
+	pid_t	getPid( void ) const;
+	bool	isRunning( void ) const;		//true until the child has been reaped by tryWait()
 };
 
 

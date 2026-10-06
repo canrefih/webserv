@@ -3,3 +3,4 @@
 obj/
 tests/bin/
 webserv
+config/test_*.conf

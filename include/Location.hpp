@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <set>
 
 /*
 Location class represents a specific location block in the server configuration.
@@ -22,8 +23,11 @@ class Location
         std::string              _uploadStore;
         std::vector<std::string> _allowedMethods;
 		std::map<std::string, std::string> _cgiExtensions;
+		std::set<std::string> _virtualCgiExtensions; // Extensions whose CGI runs even if the requested file does not exist
         int                      _returnCode;
         std::string              _returnPath;
+        std::size_t              _clientMaxBodySize; // Overrides the server limit when _clientMaxBodySizeSet is true
+        bool                     _clientMaxBodySizeSet;
 
     public:
         Location();
@@ -42,6 +46,8 @@ class Location
 		void addCgiExtension(const std::string &extension, const std::string &interpreterPath);
 		bool isCgiExtension(const std::string &extension) const;
 		const std::string &getCgiInterpreter(const std::string &extension) const;
+		void setCgiVirtual(const std::string &extension);
+		bool isCgiVirtual(const std::string &extension) const;
 		/*end*/
 
         void setRedirection(int code, const std::string &path);
@@ -55,6 +61,10 @@ class Location
         bool isAutoIndexSet() const;
         bool getUpload() const;
         const std::string &getUploadStore() const;
+
+        void setClientMaxBodySize(std::size_t size);
+        std::size_t getClientMaxBodySize() const;
+        bool isClientMaxBodySizeSet() const;
 
         bool isMethodAllowed(const std::string &method) const; // Check if a specific HTTP method is allowed for this location
 };

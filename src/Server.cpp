@@ -445,6 +445,7 @@ void Server::run() // Main server loop: Poll for events on listening and client 
 			return;
 		}
 
+		checkClientTimeouts(); // Close connections that stayed silent too long (idle keep-alive, unfinished request)
 		_cgiManager.checkTimeouts(_pollFds); // Kill any CGI script that has been running for too long, every ~1s tick regardless of poll() activity
 		drainCgiReady(_cgiManager, _clientWriteBuffers, _clientKeepAlive, _pendingCgiCookies);
 
@@ -526,7 +527,10 @@ void Server::run() // Main server loop: Poll for events on listening and client 
 	for (listenIt = _listenFds.begin(); listenIt != _listenFds.end(); ++listenIt)
 	{
 		if (*listenIt != -1)
+		{
 			close(*listenIt);
+			*listenIt = -1; // Mark as closed so ~Server() does not close it a second time
+		}
 	}
 
 	std::map<int, std::string>::iterator bufferIt;
@@ -574,12 +578,21 @@ void Server::acceptClient(int listenFd, const ServerConfig &serverConfig)
 	if (clientFd == -1)
 		return;
 
+	if (clientFd >= MAX_FD) // Too many open connections: refuse this one (fds stay below MAX_FD, see CGIHandler.hpp)
+	{
+		std::cerr << "Too many open file descriptors, connection refused: fd="
+				  << clientFd << std::endl;
+		close(clientFd);
+		return;
+	}
+
 	setNonBlocking(clientFd); // Set the new client socket to non-blocking mode to avoid blocking the server when reading/writing data
 
 	addPollFd(clientFd, POLLIN); // Add the new client socket to the poll list, monitoring for incoming data (POLLIN)
 	_clientBuffers[clientFd] = ""; // Initialize the buffer for the new client socket to store incoming request data
 	_clientServers[clientFd] = &serverConfig; // Associate the new client socket with the corresponding server configuration, allowing the server to handle requests based on the specific server settings
 	_clientKeepAlive[clientFd] = true; // Initialize the keep-alive status for the new client socket
+	_clientLastActivity[clientFd] = time(NULL);
 	std::cout << "New client connected: fd="
 			  << clientFd << " on "
 			  << serverConfig.getHost() << ":"
@@ -589,7 +602,7 @@ void Server::acceptClient(int listenFd, const ServerConfig &serverConfig)
 // HANDLE CLIENT READ
 void Server::handleClientRead(std::size_t index)
 {
-	char buffer[4096]; // Buffer to read incoming data from the client socket
+	char buffer[65536]; // Buffer to read incoming data from the client socket
 	int clientFd = _pollFds[index].fd;
 	ssize_t bytesRead = recv(clientFd, buffer, sizeof(buffer), 0); // Read data from the client socket into the buffer, returning the number of bytes read
 
@@ -605,6 +618,7 @@ void Server::handleClientRead(std::size_t index)
 		return;
 	}
 
+	_clientLastActivity[clientFd] = time(NULL);
 	_clientBuffers[clientFd].append(buffer, bytesRead); // Append the received data to the client's buffer, allowing the server to accumulate the request data until a complete request is received
 	std::string &requestBuffer = _clientBuffers[clientFd]; // Reference to the client's buffer for easier access and manipulation
 	std::size_t headerEnd = requestBuffer.find("\r\n\r\n"); // Find the end of the HTTP headers in the request buffer, which is indicated by a double CRLF ("\r\n\r\n"). If not found, the request is incomplete and we wait for more data.
@@ -614,7 +628,7 @@ void Server::handleClientRead(std::size_t index)
 
 	HttpRequest request;
 
-	if (!request.parse(requestBuffer))
+	if (!request.parse(requestBuffer.substr(0, headerEnd + 4))) // Headers only: the body is attached below with setBody() once complete, so a big upload is not re-parsed on every recv()
 	{
 		HttpResponse response;
 		response.setStatus(400, "Bad Request");
@@ -654,6 +668,8 @@ void Server::handleClientRead(std::size_t index)
 	}
 
 	const ServerConfig *serverConfig = _clientServers[clientFd];
+	std::size_t maxBodySize = serverConfig->getClientMaxBodySize(
+		serverConfig->findLocation(request.getTarget().getPath())); // Location limit if set, otherwise the server one
 
 	std::string transferEncoding =
 		request.getHeader("Transfer-Encoding");
@@ -713,6 +729,10 @@ void Server::handleClientRead(std::size_t index)
 
 	if (transferEncoding == "chunked")
 	{
+		if (requestBuffer.size() < headerEnd + 4 + 5
+			|| requestBuffer.compare(requestBuffer.size() - 4, 4, "\r\n\r\n") != 0)
+			return; // Last chunk "0\r\n\r\n" not received yet: no need to decode the whole body on every recv()
+
 		std::string decodedBody;
 		std::size_t consumed = 0;
 
@@ -720,7 +740,7 @@ void Server::handleClientRead(std::size_t index)
 			decodeChunkedBody(
 				requestBuffer,
 				headerEnd + 4,
-				serverConfig->getClientMaxBodySize(),
+				maxBodySize,
 				decodedBody,
 				consumed);
 
@@ -758,7 +778,7 @@ void Server::handleClientRead(std::size_t index)
 		* representation size.
 		*/
 		if (decodedBody.size() >
-			serverConfig->getClientMaxBodySize())
+			maxBodySize)
 		{
 			HttpResponse response;
 			response.setStatus(413, "Payload Too Large");
@@ -797,7 +817,7 @@ void Server::handleClientRead(std::size_t index)
 		}
 
 		if (expectedBodyLength >
-			serverConfig->getClientMaxBodySize())
+			maxBodySize)
 		{
 			HttpResponse response;
 			response.setStatus(413, "Payload Too Large");
@@ -872,6 +892,20 @@ void Server::handleClientRead(std::size_t index)
 	}
 
 	_clientWriteBuffers[clientFd] = response.toString();
+
+	/*
+		A response to HEAD carries the same headers as GET (Content-Length included) but no body:
+		the client never reads one, so sent body bytes would be taken as the start of the next response.
+	*/
+	if (request.getMethod() == "HEAD")
+	{
+		std::string &head = _clientWriteBuffers[clientFd];
+		std::size_t headersEnd = head.find("\r\n\r\n");
+
+		if (headersEnd != std::string::npos)
+			head.erase(headersEnd + 4);
+	}
+
 	_pollFds[index].events = POLLOUT; // Switch the poll events for the client socket to POLLOUT, indicating that we are now ready to send data back to the client
 	requestBuffer.clear();
 }
@@ -881,40 +915,41 @@ void Server::handleClientWrite(std::size_t index)
 {
     int clientFd = _pollFds[index].fd;
     std::string &response = _clientWriteBuffers[clientFd];
+    std::size_t &offset = _clientWriteOffsets[clientFd]; // Bytes already sent: avoids erasing the front of a (possibly huge) response after every send()
 
-    if (response.empty())
+    if (offset < response.size())
     {
-        if (_clientKeepAlive[clientFd])
-            _pollFds[index].events = POLLIN;
-        else
+        ssize_t bytesSent = send(
+            clientFd,
+            response.data() + offset,
+            response.size() - offset,
+            0
+        );
+
+        if (bytesSent <= 0) // -1: error, 0: nothing could be sent although data remains -> the connection is unusable
+        {
             removeClient(index);
-        return;
+            return;
+        }
+
+        offset += bytesSent;
+        _clientLastActivity[clientFd] = time(NULL);
+
+        if (offset < response.size())
+            return; // Not everything sent yet, wait for the next POLLOUT
     }
-
-    ssize_t bytesSent = send(
-        clientFd,
-        response.c_str(),
-        response.size(),
-        0
-    );
-
-    if (bytesSent < 0)
-    {
-        removeClient(index);
-        return;
-    }
-
-    if (bytesSent == 0)
-        return;
 	/*
 		If the entire response has been sent, we switch back to monitoring for incoming data (POLLIN) on the client socket
 		so that clients can send additional requests without needing to reconnect.
 		This allows for persistent connections, which is a key feature of HTTP/1.1.
 	*/
-    response.erase(0, bytesSent);
+    response.clear();
+    offset = 0;
 
-    if (response.empty())
+    if (_clientKeepAlive[clientFd])
         _pollFds[index].events = POLLIN;
+    else
+        removeClient(index);
 }
 
 /*
@@ -935,9 +970,36 @@ void Server::removeClient(std::size_t index)
 
 	_clientBuffers.erase(clientFd);
 	_clientWriteBuffers.erase(clientFd);
+	_clientWriteOffsets.erase(clientFd);
 	_clientServers.erase(clientFd);
 	_clientKeepAlive.erase(clientFd);
+	_clientLastActivity.erase(clientFd);
 	_pendingCgiCookies.erase(clientFd); // Avoid leaking this client's cookie to whoever the OS hands this fd to next
 
 	_pollFds.erase(_pollFds.begin() + index);
+}
+
+// Close client connections that have been silent for too long (idle keep-alive or unfinished request), so they can't pile up forever
+void Server::checkClientTimeouts()
+{
+	static const time_t CLIENT_TIMEOUT_SECONDS = 60;
+	time_t now = time(NULL);
+	std::size_t i = _pollFds.size();
+
+	while (i > 0) // Backwards, because removeClient() erases from _pollFds
+	{
+		--i;
+
+		int fd = _pollFds[i].fd;
+		std::map<int, time_t>::iterator it = _clientLastActivity.find(fd);
+
+		if (it == _clientLastActivity.end() || _cgiManager.hasSession(fd))
+			continue; // Listening socket, CGI pipe, or client waiting for its CGI (which has its own timeout)
+
+		if (now - it->second > CLIENT_TIMEOUT_SECONDS)
+		{
+			std::cout << "Client timed out: fd=" << fd << std::endl;
+			removeClient(i);
+		}
+	}
 }

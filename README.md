@@ -1,3 +1,5 @@
+*This project has been created as part of the 42 curriculum by recan, emercier, alubrano.*
+
 # webserv
 
 A lightweight HTTP server written in **C++98** as part of the 42 curriculum, focused on socket programming, HTTP request/response handling, configuration parsing, and event-driven I/O.

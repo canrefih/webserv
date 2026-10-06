@@ -394,6 +394,14 @@ bool Config::parse(const std::string &filename)
                 {
                     redirectCode = std::atoi(token1.c_str());
                     redirectPath = token2;
+
+                    if (redirectCode != 301 && redirectCode != 302 && redirectCode != 303
+                        && redirectCode != 307 && redirectCode != 308)
+                    {
+                        std::cerr << "Error: return code must be a redirection (301, 302, 303, 307 or 308)"
+                                << std::endl;
+                        return false;
+                    }
                 }
                 else
                 {
@@ -598,16 +606,8 @@ bool Config::parse(const std::string &filename)
                 return false;
             }
         }
-        else if (directive == "client_max_body_size") // Handle the "client_max_body_size" directive, which specifies the maximum allowed size of the request body for a server. This directive must be inside a server block and not inside a location block.
+        else if (directive == "client_max_body_size") // Handle the "client_max_body_size" directive, which specifies the maximum allowed size of the request body. In a server block it is the default; in a location block it overrides the server value for that location (as in nginx).
         {
-            if (currentLocation != NULL)
-            {
-                std::cerr << "Error: client_max_body_size "
-                        << "must be in server block"
-                        << std::endl;
-                return false;
-            }
-
             iss >> value;
 
             if (value.empty())
@@ -701,7 +701,10 @@ bool Config::parse(const std::string &filename)
                 return false;
             }
 
-            currentServer->setClientMaxBodySize(size * multiplier);
+            if (currentLocation != NULL)
+                currentLocation->setClientMaxBodySize(size * multiplier);
+            else
+                currentServer->setClientMaxBodySize(size * multiplier);
         }
         else if (directive == "error_page") // Handle the "error_page" directive, which specifies a custom error page for specific HTTP status codes. This directive must be inside a server block and not inside a location block.
         {
@@ -919,25 +922,37 @@ bool Config::parse(const std::string &filename)
                 return false;
             }
 
-            if (interpreterPath[interpreterPath.size() - 1] != ';')
-            {
-                std::string extra;
+            /*
+            * Optional "virtual" flag (same idea as Apache's "Action ... virtual"):
+            * the CGI program is run even if the requested file does not exist,
+            * for programs that don't need the script file (e.g. the 42 cgi_tester).
+            *
+            *   cgi_extension .bla ./cgi_tester virtual;
+            */
+            bool isVirtual = false;
 
-                if (iss >> extra)
-                {
-                    std::cerr << "Error: extra token in cgi_extension directive"
-                            << std::endl;
-                }
-                else
+            if (interpreterPath[interpreterPath.size() - 1] == ';')
+                interpreterPath.erase(interpreterPath.size() - 1);
+            else
+            {
+                std::string flag;
+
+                if (!(iss >> flag) || flag == "virtual")
                 {
                     std::cerr << "Error: cgi_extension directive must end with ';'"
                             << std::endl;
+                    return false;
                 }
 
-                return false;
-            }
+                if (flag != "virtual;")
+                {
+                    std::cerr << "Error: extra token in cgi_extension directive"
+                            << std::endl;
+                    return false;
+                }
 
-            interpreterPath.erase(interpreterPath.size() - 1);
+                isVirtual = true;
+            }
 
             if (interpreterPath.empty())
             {
@@ -955,6 +970,9 @@ bool Config::parse(const std::string &filename)
             }
 
             currentLocation->addCgiExtension(extension, interpreterPath);
+
+            if (isVirtual)
+                currentLocation->setCgiVirtual(extension);
         }
         else if (directive == "upload_store")
         {

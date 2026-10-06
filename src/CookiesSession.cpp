@@ -8,6 +8,7 @@
 
 static const int	SESSION_MAX_AGE = 3600;
 static const size_t	SESSION_ID_BYTES = 16;
+static const size_t	SESSION_MAX_COUNT = 10000; // Upper bound so clients that never send their cookie back (e.g. siege) can't grow memory forever
 
 CookiesSession::CookiesSession() : _maxAge(SESSION_MAX_AGE)
 {
@@ -66,6 +67,29 @@ bool	CookiesSession::isValid( const std::string &id )
 	return (true);
 }
 
+/*
+Called before storing every new session. Sessions all live _maxAge seconds, so
+_order (creation order) is also expiry order: drop expired sessions from the front,
+and while the table is full drop the oldest one. Each id is popped once, so this
+costs O(1) on average instead of scanning the whole table.
+*/
+void	CookiesSession::makeRoom( void )
+{
+	std::time_t	now = std::time(NULL);
+
+	while (!_order.empty())
+	{
+		std::map<std::string, std::time_t>::iterator	it = _sessions.find(_order.front());
+		bool	gone = (it == _sessions.end()); // already erased by isValid()
+
+		if (!gone && it->second >= now && _sessions.size() < SESSION_MAX_COUNT)
+			break ;
+		if (!gone)
+			_sessions.erase(it);
+		_order.pop_front();
+	}
+}
+
 std::string	CookiesSession::getCreateSession( const HttpRequest &request, HttpResponse &response )
 {
 	std::string	id = extractSessionId(request);
@@ -79,7 +103,9 @@ std::string	CookiesSession::getCreateSession( const HttpRequest &request, HttpRe
 	{
 		id = generateSessionId();
 	}
+	makeRoom();
 	_sessions[id] = std::time(NULL) + _maxAge;
+	_order.push_back(id);
 
 	std::ostringstream	cookie;
 	cookie << "session_id=" << id << "; Path=/; HttpOnly; Max-Age=" << _maxAge;

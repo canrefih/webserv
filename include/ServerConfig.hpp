@@ -41,6 +41,7 @@ class ServerConfig
 		const std::string &getUploadPath() const;
 
 		std::size_t getClientMaxBodySize() const;
+		std::size_t getClientMaxBodySize(const Location *location) const; // Limit of the location if it sets one, otherwise the server limit
 
 		std::vector<Location> &getLocations();
 		const std::vector<Location> &getLocations() const;

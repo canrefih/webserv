@@ -22,7 +22,7 @@ struct CgiSession
     std::string body;
     std::size_t bodySent;
     std::string output;
-    time_t start;
+    time_t lastActivity; // last time bytes were exchanged with the script (start time at first)
     bool keepAlive;
     bool stdoutClosed;
 };
@@ -50,6 +50,10 @@ class CGIManager
 		std::map<int, CgiSession*>		_sessions;	// client fd -> in-flight session
 		std::map<int, int>				_fdToClient;	// CGI stdin/stdout fd -> client fd
 		std::vector<CgiReadyResponse>	_ready;		// finished/aborted results waiting to be picked up
+		std::vector<pid_t>				_dyingPids;	// killed CGIs not reaped yet: waitpid()'d on every tick so they don't stay zombies
+
+		void	killAndReap(CGIHandler *cgi);
+		void	reapDying(void);
 
 		void	removeFd(std::vector<pollfd> &pollFds, int fd);
 		void	setClientEvents(std::vector<pollfd> &pollFds, int clientFd, short events);
@@ -61,6 +65,7 @@ class CGIManager
 		~CGIManager();
 
 		bool	isCgiFd(int fd) const;
+		bool	hasSession(int clientFd) const; // true while a CGI is running for this client
 
 		// Launches the CGI script asynchronously. Returns false with immediateErrorResponse filled
 		// if the launch itself failed (fork/pipe error) - nothing async was started in that case.

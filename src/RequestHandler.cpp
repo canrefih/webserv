@@ -72,7 +72,11 @@ void RequestHandler::handleRequest(const HttpRequest &request, HttpResponse &res
 {
 	const Location *location = _serverConfig.findLocation(request.getTarget().getPath());
 
-	if (location != NULL &&
+	if (location != NULL && location->getReturnCode() != 0) // "return <code> <url>;" in the location: redirect before anything else (like nginx)
+	{
+		setRedirectResponse(response, location->getReturnCode(), location->getReturnPath());
+	}
+	else if (location != NULL &&
 		!location->isMethodAllowed(request.getMethod()))
 	{
 		setErrorResponse(response, 405, "Method Not Allowed", "Method Not Allowed\n");
@@ -85,7 +89,7 @@ void RequestHandler::handleRequest(const HttpRequest &request, HttpResponse &res
 							"Method Not Allowed",
 							"Method Not Allowed\n");
 		}
-		else if (request.getBody().size() > _serverConfig.getClientMaxBodySize())
+		else if (request.getBody().size() > _serverConfig.getClientMaxBodySize(location))
 		{
 			setErrorResponse(response, 413,
 							"Payload Too Large",
@@ -172,7 +176,12 @@ void RequestHandler::handleRequest(const HttpRequest &request, HttpResponse &res
 			std::string locationPath = location->getPath();
 			std::string requestPath = request.getTarget().getPath();
 
-			path = root + requestPath.substr(locationPath.size());
+			std::string relativePath = requestPath.substr(locationPath.size());
+
+			if (!relativePath.empty() && relativePath[0] != '/') // Location declared with a trailing slash ("/directory/"): put the separator back
+				relativePath = "/" + relativePath;
+
+			path = root + relativePath;
 		}
 		else
 		{
@@ -482,9 +491,29 @@ void RequestHandler::setErrorResponse(HttpResponse &response, int statusCode,
 	response.setContentType("text/plain");
 }
 
+// Build a redirection response: the client is told to request "target" instead (Location header)
+void RequestHandler::setRedirectResponse(HttpResponse &response, int statusCode, const std::string &target)
+{
+	std::string statusText = "Found";
+
+	if (statusCode == 301)
+		statusText = "Moved Permanently";
+	else if (statusCode == 303)
+		statusText = "See Other";
+	else if (statusCode == 307)
+		statusText = "Temporary Redirect";
+	else if (statusCode == 308)
+		statusText = "Permanent Redirect";
+
+	response.setStatus(statusCode, statusText);
+	response.setHeader("Location", target);
+	response.setBody("<html><body><a href=\"" + escapeHtml(target) + "\">" + escapeHtml(target) + "</a></body></html>\n");
+	response.setContentType("text/html");
+}
+
 bool RequestHandler::resolveCGI(const HttpRequest &request, const Location *location, std::string &scriptPath, std::string &interpreterPath)
 {
-	if (location == NULL)
+	if (location == NULL || location->getReturnCode() != 0) // A redirected location never runs a CGI
 		return (false);
 
 	std::string target = request.getTarget().getPath();
@@ -503,6 +532,8 @@ bool RequestHandler::resolveCGI(const HttpRequest &request, const Location *loca
 
 		if (relativePath.empty())
 			relativePath = "/";
+		else if (relativePath[0] != '/') // Location declared with a trailing slash ("/directory/"): put the separator back
+			relativePath = "/" + relativePath;
 
 		path = location->getRoot() + relativePath;
 	}
@@ -514,7 +545,7 @@ bool RequestHandler::resolveCGI(const HttpRequest &request, const Location *loca
 	std::string extension = path.substr(dot);
 	if (!location->isCgiExtension(extension))
 		return (false);
-	if (!fileExists(path)) // Let a missing script fall through to the normal GET/POST/DELETE path so it gets a proper 404 instead of failing execve() later
+	if (!location->isCgiVirtual(extension) && !fileExists(path)) // Let a missing script fall through to the normal GET/POST/DELETE path so it gets a proper 404 instead of failing execve() later (unless the extension is declared "virtual")
 		return (false);
 	scriptPath = path;
 	interpreterPath = location->getCgiInterpreter(extension);

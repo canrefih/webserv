@@ -3,6 +3,7 @@
 
 #include <string>
 #include <map>
+#include <deque>
 #include <ctime>
 
 class HttpRequest;
@@ -12,9 +13,11 @@ class CookiesSession
 {
 private:
 	std::map<std::string, std::time_t>	_sessions;
+	std::deque<std::string>				_order; // session ids in creation order = expiry order (same Max-Age for all)
 	int									_maxAge;
 	std::string	generateSessionId( void ) const;
 	std::string	extractSessionId( const HttpRequest &request ) const;
+	void		makeRoom( void );
 
 public:
 	CookiesSession();

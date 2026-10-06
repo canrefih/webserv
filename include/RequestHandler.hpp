@@ -27,6 +27,7 @@ class RequestHandler
 		bool isDirectory(const std::string &path); // Check if the specified path corresponds to a directory in the filesystem and return true if it does, false otherwise
 		void setErrorResponse(HttpResponse &response, int statusCode,
 							  const std::string &statusText, const std::string &defaultBody); // Set an error response with the specified status code, status text, and default body content. If a custom error page is configured for the status code, it will be used instead of the default body.
+		void setRedirectResponse(HttpResponse &response, int statusCode, const std::string &target); // Set a 3xx response pointing the client to "target" with a Location header
 
 	public:
 		RequestHandler(const ServerConfig &serverConfig);

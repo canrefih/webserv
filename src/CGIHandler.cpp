@@ -16,13 +16,56 @@ static bool	setNonBlocking( int fd )
 	return (true);
 }
 
+/*
+Computes the prefix that leads from "dir" back to the server's working directory,
+so that a relative path keeps pointing to the same file after chdir(dir).
+  "./www/cgi-bin" -> "../../"      "/abs/dir" -> "$PWD/"
+Returns false when it can't be computed (".." in dir, or absolute dir without $PWD).
+*/
+static bool	pathBackFrom( const std::string &dir, std::string &back )
+{
+	back.clear();
+	if (dir[0] == '/')
+	{
+		const char *pwd = std::getenv("PWD");
+
+		if (pwd == NULL || pwd[0] != '/')
+			return (false);
+		back = std::string(pwd) + "/";
+		return (true);
+	}
+
+	std::size_t start = 0;
+
+	while (start <= dir.size())
+	{
+		std::size_t end = dir.find('/', start);
+
+		if (end == std::string::npos)
+			end = dir.size();
+
+		std::string part = dir.substr(start, end - start);
+
+		if (part == "..")
+			return (false);
+		if (!part.empty() && part != ".")
+			back += "../";
+		start = end + 1;
+	}
+	return (true);
+}
+
 CGIHandler::CGIHandler( void ) : pid(-1), running(false)
 {
+	for (int i = 0; i < 4; i++)
+		fd[i] = -1; // -1 = closed: lets the destructor tell which pipe ends are still open
 	std::cout << "CGIHandler created." << std::endl;
 }
 
 CGIHandler::~CGIHandler()
 {
+	closeStdinFd(); // A CGI aborted early (timeout, error, client gone) still has its pipe ends open: don't leak them
+	closeStdoutFd();
 	std::cout << "CGIHanlder destoyed. " << std::endl;
 }
 
@@ -38,8 +81,32 @@ void	CGIHandler::setup(const std::string &scriptPath, const std::string &interpr
     _envTmps.clear();
 
 	_scriptPath = scriptPath;
-	_tmps.push_back(interpreterPath);
-	_tmps.push_back(scriptPath);
+	_scriptDir.clear();
+SI
+	std::string interpreter = interpreterPath;
+	std::string script = scriptPath;
+	std::size_t slash = scriptPath.find_last_of('/');
+
+	if (slash != std::string::npos)
+	{
+		std::string dir = (slash == 0) ? "/" : scriptPath.substr(0, slash);
+		bool interpreterIsRelative = !interpreter.empty() && interpreter[0] != '/' && interpreter.find('/') != std::string::npos;
+		std::string back;
+		bool canChdir = true;
+
+		if (interpreterIsRelative)
+			canChdir = pathBackFrom(dir, back);
+		if (canChdir)
+		{
+			_scriptDir = dir;
+			script = scriptPath.substr(slash + 1);
+			if (interpreterIsRelative)
+				interpreter = back + interpreter;
+		}
+	}
+
+	_tmps.push_back(interpreter);
+	_tmps.push_back(script);
 	for(std::size_t i = 0; i < _tmps.size(); i++)
 		_argv.push_back(_tmps[i].c_str());
 	_argv.push_back(NULL);
@@ -67,17 +134,19 @@ bool	CGIHandler::setupPipes( void )
 	if (pipe(fd + 2) == -1)
 	{
 		std::cerr << strerror(errno) << " On second pipe." << std::endl;
-		close(fd[0]);
-		close(fd[1]);
+		closeAllPipes();
+		return (0);
+	}
+	if (fd[0] >= MAX_FD || fd[1] >= MAX_FD || fd[2] >= MAX_FD || fd[3] >= MAX_FD) // Over the limit other CGI children rely on to close inherited fds
+	{
+		std::cerr << "Too many open file descriptors, CGI refused." << std::endl;
+		closeAllPipes();
 		return (0);
 	}
 	if (!setNonBlocking(fd[1]) || !setNonBlocking(fd[2]))
 	{
 		std::cerr << strerror(errno) << " Failed to set pipes non-blocking." << std::endl;
-		close(fd[0]);
-		close(fd[1]);
-		close(fd[2]);
-		close(fd[3]);
+		closeAllPipes();
 		return (0);
 	}
 	return (1);
@@ -110,12 +179,18 @@ void	CGIHandler::childProcess( void )
 	close(fd[2]);
 	close(fd[3]);
 
-	long maxFd = sysconf(_SC_OPEN_MAX); // fork() copied every fd the server had open (listening sockets, other clients, other CGI pipes); the child must not hold onto any of them
-
-	if (maxFd < 0)
-		maxFd = 1024;
-	for (int i = 3; i < maxFd; i++)
+	for (int i = 3; i < MAX_FD; i++) // fork() copied every fd the server had open (listening sockets, other clients, other CGI pipes); the child must not hold onto any of them. The server never uses a fd >= MAX_FD.
+	{
+		if (i == fd[0] || i == fd[1] || i == fd[2] || i == fd[3]) // Our own pipe ends were already closed just above
+			continue;
 		close(i);
+	}
+
+	if (!_scriptDir.empty() && chdir(_scriptDir.c_str()) == -1) // Run the CGI in its own directory (relative file access)
+	{
+		std::cerr << "chdir failed: " << _scriptDir << std::endl;
+		_exit(1);
+	}
 
 	execve(_argv[0], const_cast<char**>(&_argv[0]), const_cast<char**>(&_envp[0]));
 	std::cerr << "execve failed: "
@@ -147,13 +222,15 @@ bool	CGIHandler::start( void )
 	if (pid == -1)
 	{
 		std::cerr << "Error pid." << std::endl;
-		close(fd[0]); close(fd[1]); close(fd[2]); close(fd[3]);
+		closeAllPipes();
 		return (false);
 	}
 	if (pid == 0)
 		childProcess();
-	close(fd[0]);
+	close(fd[0]); // Child-side ends, only the child uses them
 	close(fd[3]);
+	fd[0] = -1;
+	fd[3] = -1;
 	running = true;
 	return (true);
 }
@@ -186,6 +263,29 @@ void	CGIHandler::closeStdoutFd( void )
 	}
 }
 
+// Closes every pipe end still open and marks them -1 (used on setup failures)
+void	CGIHandler::closeAllPipes( void )
+{
+	for (int i = 0; i < 4; i++)
+	{
+		if (fd[i] != -1)
+		{
+			close(fd[i]);
+			fd[i] = -1;
+		}
+	}
+}
+
+pid_t	CGIHandler::getPid( void ) const
+{
+	return (pid);
+}
+
+bool	CGIHandler::isRunning( void ) const
+{
+	return (running);
+}
+
 /*
 Non-blocking reap: uses WNOHANG so it can be called from the main
 poll() loop (e.g. once EOF is read on fd[2]) without ever stalling
@@ -201,7 +301,7 @@ int		CGIHandler::tryWait( int &exitCode )
         exitCode = -256;
         return -1;
     }
-	
+
 	int		status = -1;
 	pid_t	ret = waitpid(pid, &status, WNOHANG);
 

@@ -4,7 +4,9 @@ Location::Location() // Default constructor
     : _autoindex(false),
       _autoindexSet(false),
       _upload(false),
-      _returnCode(0)
+      _returnCode(0),
+      _clientMaxBodySize(0),
+      _clientMaxBodySizeSet(false)
 {
 }
 
@@ -13,7 +15,9 @@ Location::Location(const std::string &path) // Constructor with a specified path
       _autoindex(false),
       _autoindexSet(false),
       _upload(false),
-      _returnCode(0)
+      _returnCode(0),
+      _clientMaxBodySize(0),
+      _clientMaxBodySizeSet(false)
 {
 }
 
@@ -82,6 +86,22 @@ bool Location::isAutoIndexSet() const
     return _autoindexSet;
 }
 
+void Location::setClientMaxBodySize(std::size_t size)
+{
+    _clientMaxBodySize = size;
+    _clientMaxBodySizeSet = true;
+}
+
+std::size_t Location::getClientMaxBodySize() const
+{
+    return _clientMaxBodySize;
+}
+
+bool Location::isClientMaxBodySizeSet() const
+{
+    return _clientMaxBodySizeSet;
+}
+
 bool Location::getUpload() const
 {
     return _upload;
@@ -132,6 +152,16 @@ const std::string &Location::getCgiInterpreter (const std::string &extension) co
 	if (it == _cgiExtensions.end())
 		return (empty);
 	return (it->second);
+}
+
+void Location::setCgiVirtual(const std::string &extension)
+{
+	_virtualCgiExtensions.insert(extension);
+}
+
+bool Location::isCgiVirtual(const std::string &extension) const
+{
+	return (_virtualCgiExtensions.find(extension) != _virtualCgiExtensions.end());
 }
 
 void Location::setRedirection(int code, const std::string &path)

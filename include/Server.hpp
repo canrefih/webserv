@@ -14,6 +14,7 @@
 #include <string>
 #include <poll.h>
 #include <csignal>
+#include <ctime>
 
 /*
 socket()
@@ -46,8 +47,10 @@ class Server
 		std::vector<pollfd>	_pollFds;
 		std::map<int, std::string> _clientBuffers; // Maps client socket file descriptors to their corresponding request buffers
 		std::map<int, std::string> _clientWriteBuffers; // Maps client socket file descriptors to their corresponding write buffers
+		std::map<int, std::size_t> _clientWriteOffsets; // Bytes of the write buffer already sent to each client
 		std::map<int, const ServerConfig *> _clientServers; // Maps client socket file descriptors to their corresponding server configurations
 		std::map<int, bool> _clientKeepAlive; // Maps client socket file descriptors to their corresponding keep-alive status
+		std::map<int, time_t> _clientLastActivity; // Last time each client sent or received data, to close idle connections
 		std::map<int, std::string> _pendingCgiCookies; // Set-Cookie value decided before dispatching to CGI, applied once that response is ready
 
 		CGIManager _cgiManager; // Owns every in-flight CGI execution (see CGIManager.hpp)
@@ -61,6 +64,7 @@ class Server
 		void acceptClient(int listenFd, const ServerConfig &serverConfig);
 		void handleClientRead(std::size_t index);
 		void removeClient(std::size_t index);
+		void checkClientTimeouts(); // Close client connections idle for more than CLIENT_TIMEOUT_SECONDS
 		void handleClientWrite(std::size_t index);
 
 		enum ChunkParseResult

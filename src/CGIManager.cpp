@@ -17,6 +17,8 @@ static std::string toLower(const std::string &str)
 	return (result);
 }
 
+static const std::size_t CGI_MAX_OUTPUT_BYTES = 256UL * 1024 * 1024; // Upper bound on a CGI response kept in memory
+
 CGIManager::CGIManager( void )
 {
 }
@@ -107,7 +109,7 @@ bool	CGIManager::start(int clientFd, const HttpRequest &request, const ServerCon
 	session->cgi = cgi;
 	session->body = request.getBody();
 	session->bodySent = 0;
-	session->start = time(NULL);
+	session->lastActivity = time(NULL);
 	session->keepAlive = (request.getHeader("Connection") != "close");
 	session->stdoutClosed = false;
 	_sessions[clientFd] = session;
@@ -164,6 +166,7 @@ void	CGIManager::handleEvent(int fd, short revents, std::vector<pollfd> &pollFds
 		}
 
 		session->bodySent += bytesWritten;
+		session->lastActivity = time(NULL);
 
 		if (session->bodySent == session->body.size())
 		{
@@ -176,7 +179,7 @@ void	CGIManager::handleEvent(int fd, short revents, std::vector<pollfd> &pollFds
 
 	if (revents & (POLLIN | POLLHUP))
 	{
-		char buffer[4096];
+		char buffer[65536];
 		ssize_t bytesRead = read(fd, buffer, sizeof(buffer));
 
 		if (bytesRead < 0)
@@ -195,6 +198,10 @@ void	CGIManager::handleEvent(int fd, short revents, std::vector<pollfd> &pollFds
 		}
 
 		session->output.append(buffer, bytesRead);
+		session->lastActivity = time(NULL);
+
+		if (session->output.size() > CGI_MAX_OUTPUT_BYTES) // Runaway script (e.g. infinite print loop): stop it before it eats all the memory
+			abort(clientFd, session, pollFds, 502, "Bad Gateway");
 	}
 }
 
@@ -296,7 +303,7 @@ void	CGIManager::finish(int clientFd, CgiSession *session, std::vector<pollfd> &
 // Common cleanup for a CGI execution that failed or timed out: kill the child, drop its pipes, and answer the client with an error instead of leaving it hanging
 void	CGIManager::abort(int clientFd, CgiSession *session, std::vector<pollfd> &pollFds, int statusCode, const std::string &statusText)
 {
-	session->cgi->kill();
+	killAndReap(session->cgi);
 	_fdToClient.erase(session->cgi->getStdinFd());
 	_fdToClient.erase(session->cgi->getStdoutFd());
 	removeFd(pollFds, session->cgi->getStdinFd());
@@ -323,11 +330,14 @@ void	CGIManager::abort(int clientFd, CgiSession *session, std::vector<pollfd> &p
 	_sessions.erase(clientFd);
 }
 
-// Called once per poll() tick: kills any CGI script that has been running longer than CGI_TIMEOUT_SECONDS
+// Called once per poll() tick: kills any CGI script that has exchanged no data for more than CGI_TIMEOUT_SECONDS
+// (a stuck or infinitely looping script), while a script that keeps working, even slowly under load, is left alone
 void CGIManager::checkTimeouts(std::vector<pollfd> &pollFds)
 {
     static const time_t CGI_TIMEOUT_SECONDS = 30;
     time_t now = time(NULL);
+
+    reapDying();
 
     std::map<int, CgiSession*>::iterator it = _sessions.begin();
     while (it != _sessions.end())
@@ -359,10 +369,45 @@ void CGIManager::checkTimeouts(std::vector<pollfd> &pollFds)
 			}
 		}
 
-		if (now - session->start > CGI_TIMEOUT_SECONDS)
+		if (now - session->lastActivity > CGI_TIMEOUT_SECONDS)
 			abort(clientFd, session, pollFds,
 				504, "Gateway Timeout");
     }
+}
+
+bool	CGIManager::hasSession(int clientFd) const
+{
+	return (_sessions.find(clientFd) != _sessions.end());
+}
+
+/*
+Kills a CGI that has to stop early and reaps it right away if it is already dead.
+SIGKILL is not instantaneous, so if waitpid(WNOHANG) finds it still alive its pid is
+kept in _dyingPids and reaped on a later tick: no zombie process is left behind.
+*/
+void	CGIManager::killAndReap(CGIHandler *cgi)
+{
+	int exitCode;
+
+	if (!cgi->isRunning())
+		return; // Already reaped (e.g. it exited, then the server answered 502)
+	cgi->kill();
+	if (cgi->tryWait(exitCode) == 0)
+		_dyingPids.push_back(cgi->getPid());
+}
+
+// Called once per tick: reaps the killed CGIs that had not finished dying yet
+void	CGIManager::reapDying(void)
+{
+	std::size_t i = 0;
+
+	while (i < _dyingPids.size())
+	{
+		if (waitpid(_dyingPids[i], NULL, WNOHANG) != 0) // > 0: reaped, -1: nothing left to wait for
+			_dyingPids.erase(_dyingPids.begin() + i);
+		else
+			++i;
+	}
 }
 
 // The client disconnected while a CGI was still running for it: kill it and drop its pipes, no response needed since there's no one left to send it to
@@ -375,7 +420,7 @@ void	CGIManager::abortForClient(int clientFd, std::vector<pollfd> &pollFds)
 
 	CgiSession *session = it->second;
 
-	session->cgi->kill();
+	killAndReap(session->cgi);
 	removeFd(pollFds, session->cgi->getStdinFd());
 	removeFd(pollFds, session->cgi->getStdoutFd());
 	_fdToClient.erase(session->cgi->getStdinFd());

@@ -559,7 +559,8 @@ static void testGetAutoIndex()
     printResult("GET autoindex directory", ok);
 }
 
-static void testGetDirectoryForbiddenWithoutAutoIndex()
+// A directory with no index and autoindex off has nothing to show: 404 (expected by the 42 tester, allowed by RFC 9110 instead of 403)
+static void testGetDirectoryNotFoundWithoutAutoIndex()
 {
     ServerConfig config = makeBaseConfig();
     config.setAutoIndex(false);
@@ -570,9 +571,9 @@ static void testGetDirectoryForbiddenWithoutAutoIndex()
 
     runRequest(handler, "GET", "/emptydir/", response);
 
-    bool ok = getStatusCode(response) == 403;
+    bool ok = getStatusCode(response) == 404;
 
-    printResult("GET directory without index/autoindex -> 403", ok);
+    printResult("GET directory without index/autoindex -> 404", ok);
 }
 
 static void testGetLocationRoot()
@@ -1657,8 +1658,9 @@ static void testCustom403ErrorPage()
     RequestHandler handler(config);
     HttpResponse response;
 
+    // DELETE on a directory is still refused with 403 (a GET on a directory without index is now a 404)
     runRequest(handler,
-               "GET",
+               "DELETE",
                "/protected",
                response);
 
@@ -1714,7 +1716,7 @@ static void testLocationDisablesServerAutoIndex()
                "/no-list/files",
                response);
 
-    bool ok = getStatusCode(response) == 403;
+    bool ok = getStatusCode(response) == 404; // No listing and no index: nothing to show
 
     printResult("Location autoindex disables server autoindex", ok);
 }
@@ -1873,9 +1875,9 @@ static void testDirectoryMissingIndex()
                "/missing-index/",
                response);
 
-    bool ok = getStatusCode(response) == 403;
+    bool ok = getStatusCode(response) == 404;
 
-    printResult("GET directory with missing index -> 403", ok);
+    printResult("GET directory with missing index -> 404", ok);
 }
 
 static void testEmptyDirectoryIndex()
@@ -3593,7 +3595,7 @@ int main()
     testGetIndex();
     testGetIndexWithoutTrailingSlash();
     testGetAutoIndex();
-    testGetDirectoryForbiddenWithoutAutoIndex();
+    testGetDirectoryNotFoundWithoutAutoIndex();
     testGetLocationRoot();
     testGetLocationIndex();
     testGetQueryString();

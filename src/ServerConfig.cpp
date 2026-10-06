@@ -50,6 +50,13 @@ std::size_t ServerConfig::getClientMaxBodySize() const
 	return _clientMaxBodySize;
 }
 
+std::size_t ServerConfig::getClientMaxBodySize(const Location *location) const
+{
+	if (location != NULL && location->isClientMaxBodySizeSet())
+		return location->getClientMaxBodySize();
+	return _clientMaxBodySize;
+}
+
 std::vector<Location> &ServerConfig::getLocations()
 {
     return _locations;
