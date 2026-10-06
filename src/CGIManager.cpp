@@ -17,7 +17,7 @@ static std::string toLower(const std::string &str)
 	return (result);
 }
 
-static const std::size_t CGI_MAX_OUTPUT_BYTES = 256UL * 1024 * 1024; // Upper bound on a CGI response kept in memory
+static const std::size_t CGI_MAX_OUTPUT_BYTES = 100001000; // Upper bound on a CGI response kept in memory
 
 CGIManager::CGIManager( void )
 {
