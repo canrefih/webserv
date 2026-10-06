@@ -82,7 +82,6 @@ void	CGIHandler::setup(const std::string &scriptPath, const std::string &interpr
 
 	_scriptPath = scriptPath;
 	_scriptDir.clear();
-SI
 	std::string interpreter = interpreterPath;
 	std::string script = scriptPath;
 	std::size_t slash = scriptPath.find_last_of('/');
