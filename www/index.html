@@ -1,10 +1,88 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<title>Webserv Test</title>
+	<style>
+		body { font-family: sans-serif; max-width: 800px; margin: 0 auto; padding: 16px; line-height: 1.5; }
+		section { border: 1px solid #ccc; border-radius: 6px; padding: 8px 16px; margin: 16px 0; }
+		h2 { margin: 8px 0; font-size: 1.2em; }
+		code { background: #eee; padding: 0 4px; border-radius: 3px; }
+		textarea { width: 100%; box-sizing: border-box; }
+		pre { background: #f6f6f6; border: 1px solid #ddd; padding: 8px; white-space: pre-wrap; word-break: break-all; min-height: 1.5em; }
+		button { margin: 4px 4px 4px 0; }
+	</style>
 </head>
 <body>
 	<h1>Welcome to Webserv</h1>
-	<p>This is the test page for server 8080</p>
+	<p>Demo page for <code>./webserv config/cgi_test.conf</code> on port 8080. Each section tests one feature of the server.</p>
+
+	<section>
+		<h2>1. Static files (GET)</h2>
+		<p>Images loaded by this page (one extra GET request each, served as <code>image/png</code>):</p>
+		<img src="/images/42_logo.png" alt="42 logo" width="150" height="150">
+		<img src="/images/42_lausanne.png" alt="42 Lausanne" width="150" height="150">
+		<ul>
+			<li><a href="/images/42_logo.png">/images/42_logo.png</a>: binary file (<code>image/png</code>)</li>
+			<li><a href="/images/">/images/</a>: directory, its <code>index.html</code> is served</li>
+			<li><a href="/does-not-exist">/does-not-exist</a>: 404 (default error page)</li>
+		</ul>
+	</section>
+
+	<section>
+		<h2>2. Location with its own root and index</h2>
+		<p><code>location /directory</code> is rooted in <code>./YoupiBanane</code> with <code>index youpi.bad_extension</code>.</p>
+		<ul>
+			<li><a href="/directory/">/directory/</a>: serves <code>YoupiBanane/youpi.bad_extension</code></li>
+			<li><a href="/directory/nop/">/directory/nop/</a>: serves <code>YoupiBanane/nop/youpi.bad_extension</code></li>
+			<li><a href="/directory/Yeah">/directory/Yeah</a>: no index file and <code>autoindex off</code>, so 404</li>
+		</ul>
+	</section>
+
+	<section>
+		<h2>3. Upload (POST /post_body)</h2>
+		<p>The body is saved in <code>www/uploads/</code> as <code>upload-&lt;n&gt;.txt</code>. Limit for this location: <code>client_max_body_size 100</code>.</p>
+		<textarea id="upload-body" rows="3">Hello webserv!</textarea>
+		<button onclick="send('POST', '/post_body', document.getElementById('upload-body').value, 'upload-result')">Upload (expect 201)</button>
+		<button onclick="send('POST', '/post_body', new Array(201).join('x'), 'upload-result')">Upload 200 bytes (expect 413)</button>
+		<pre id="upload-result"></pre>
+	</section>
+
+	<section>
+		<h2>4. CGI (.bla &rarr; cgi_tester)</h2>
+		<p><code>cgi_extension .bla ./config/cgi_tester virtual;</code> The tester answers with the request body in upper case.</p>
+		<textarea id="cgi-body" rows="3">hello from the browser</textarea>
+		<button onclick="send('POST', '/directory/youpi.bla', document.getElementById('cgi-body').value, 'cgi-result')">POST /directory/youpi.bla</button>
+		<pre id="cgi-result"></pre>
+	</section>
+
+	<section>
+		<h2>5. Methods not allowed (405)</h2>
+		<p><code>location /</code> only allows <code>GET</code>.</p>
+		<button onclick="send('POST', '/', 'data', 'method-result')">POST /</button>
+		<button onclick="send('DELETE', '/index.html', null, 'method-result')">DELETE /index.html</button>
+		<pre id="method-result"></pre>
+	</section>
+
+	<script>
+		// Sends a request with fetch() and shows the status line and body of the response
+		function send(method, url, body, resultId) {
+			var result = document.getElementById(resultId);
+			var options = { method: method };
+
+			if (body !== null)
+				options.body = body;
+			result.textContent = method + ' ' + url + ' ...';
+			fetch(url, options).then(function (response) {
+				return response.text().then(function (text) {
+					result.textContent = method + ' ' + url + ' -> ' + response.status + ' ' + response.statusText
+						+ (text ? '\n\n' + text.slice(0, 1000) : '');
+				});
+			}).catch(function (error) {
+				result.textContent = method + ' ' + url + ' -> failed: ' + error;
+			});
+		}
+	</script>
 </body>
 </html>

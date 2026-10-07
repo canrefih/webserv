@@ -227,4 +227,5 @@ curl -v -H "Transfer-Encoding: chunked" -d @README.md http://127.0.0.1:8080/uplo
 ### AI usage
 
 - **Documentation**: writing and structuring this README from the source code.
+- Create Index pages
 - AI was used to test the project more thoroughly, identify errors that we had not noticed, and guide our research on how to solve them.
